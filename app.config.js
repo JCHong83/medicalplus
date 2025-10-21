@@ -2,6 +2,7 @@ export default {
   expo: {
     name: "MedicalPlus",
     slug: "medicalplus",
+    scheme: "medicalplus",
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/icon.png",

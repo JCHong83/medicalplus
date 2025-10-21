@@ -88,7 +88,10 @@ export default function PatientHomeScreen() {
         <Text style={styles.distance}>{item.distance} km away</Text>
         <TouchableOpacity
           style={styles.bookButton}
-          onPress={() => router.push(`/patient/book?doctor=${item.id}`)}
+          onPress={() => router.push({
+            pathname: "/patient/booking",
+            params: { doctorId: item.id },
+          })}
         >
           <Text style={styles.bookText}>Book Appointment</Text>
         </TouchableOpacity>
