@@ -9,7 +9,13 @@ export default function RootLayout() {
   return (
     <PaperProvider>
       <AuthProvider>
-        <Stack screenOptions={{ headerShown: false }} />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            headerTitleAlign: "center",
+            headerTintColor: "#03045e",
+          }}
+        />
       </AuthProvider>
     </PaperProvider>
   );

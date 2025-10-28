@@ -10,6 +10,7 @@ export default function PatientLayout() {
       <Tabs
         screenOptions={{
           headerShown: true,
+          headerTitleAlign: "center",
           tabBarActiveTintColor: "#0077b6",
           tabBarInactiveTintColor: "#aaa",
           tabBarStyle: { backgroundColor: "#fff", height: 60 },
@@ -34,6 +35,16 @@ export default function PatientLayout() {
             tabBarLabel: "Appointments",
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="calendar-outline" color={color} size={size} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: "Profile",
+            tabBarLabel: "Profile",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="person-outline" color={color} size={size} />
             ),
           }}
         />
