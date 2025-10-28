@@ -21,12 +21,16 @@ export default function loginScreen() {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       const user = data.user;
-      if (user.user_metadata.role === "doctor") router.replace("/doctor");
-      else router.replace("/patient");
+      if (user.user_metadata.role === "doctor") router.replace("/(doctor)");
+      else router.replace("/(patient)");
 
       setTimeout(() => {
         setLoading(false);
-        router.replace("/patient");
+        router.replace("/(patient)");
+
+        // Redirect based on role
+        
+
       }, 1000);
     } catch (err: any) {
       setError(err.message || "Login failed");

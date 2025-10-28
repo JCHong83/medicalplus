@@ -89,7 +89,7 @@ export default function PatientHomeScreen() {
         <TouchableOpacity
           style={styles.bookButton}
           onPress={() => router.push({
-            pathname: "/patient/booking",
+            pathname: "/(patient)/booking",
             params: { doctorId: item.id },
           })}
         >

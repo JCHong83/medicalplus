@@ -85,7 +85,7 @@ export default function SignupScreen() {
           ? "Your doctor account is pending verification."
           : "Welcome! You can now book appointments."
       );
-      router.replace(role === "doctor" ? "/doctor" : "/patient");
+      router.replace(role === "doctor" ? "/(doctor)" : "/(patient)");
     } catch (err: any) {
       setError(err.message || "SignUp failed");
       setLoading(false);
