@@ -1,10 +1,47 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from 'react-native';
+import { useRouter, Href } from 'expo-router';
+import { useEffect, useState } from "react";
+import { supabase } from "../src/api/supabaseClient";
 
 export default function LandingPage() {
-
   const router = useRouter();
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (session) {
+        // fetch the role from the profile table
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", session.user.id)
+          .single();
+
+        const dbRole = profile?.role ?? "patient";
+
+        if (dbRole === "doctor") {
+          router.replace("/(doctor)/(tabs)");
+        } else {
+          router.replace("/(patient)/(tabs)");
+        }
+      } else {
+        setCheckingSession(false);
+      }
+    };
+
+    checkSession();
+  }, []);
+
+  if (checkingSession) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#0077b6" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -14,11 +51,11 @@ export default function LandingPage() {
       </View>
 
       <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.buttonPrimary} onPress={() => router.push('/auth/login')}>
+        <TouchableOpacity style={styles.buttonPrimary} onPress={() => router.push("(auth)/login" as Href)}>
           <Text style={styles.buttonText}>Login</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.buttonSecondary} onPress={() => router.push('/auth/signup')}>
+        <TouchableOpacity style={styles.buttonSecondary} onPress={() => router.push("(auth)/signup" as Href)}>
           <Text style={styles.buttonTextAlt}>Sign Up</Text>
         </TouchableOpacity>
       </View>
@@ -80,5 +117,11 @@ const styles = StyleSheet.create({
     color: '#0077b6',
     fontSize: 16,
     fontWeight: '600',
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
   },
 });

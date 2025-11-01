@@ -1,10 +1,10 @@
 import { View, Text } from 'react-native'
 import React from 'react'
 
-export default function AdminIndex() {
+export default function DoctorCard() {
   return (
     <View>
-      <Text>AdminIndex</Text>
+      <Text>DoctorCard</Text>
     </View>
   )
 }

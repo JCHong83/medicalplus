@@ -1,69 +1,17 @@
-import { View, Text } from 'react-native';
-import React from 'react';
-import { Tabs } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { Stack } from "expo-router";
 
-
-export default function PatientLayout() {
+export default function PatientRootLayout() {
   return (
-    <>
-      <Tabs
-        screenOptions={{
-          headerShown: true,
-          headerTitleAlign: "center",
-          tabBarActiveTintColor: "#0077b6",
-          tabBarInactiveTintColor: "#aaa",
-          tabBarStyle: { backgroundColor: "#fff", height: 60 },
-          headerStyle: { backgroundColor: "#fff" },
-          headerTitleStyle: { color: "#03045e", fontWeight: "700" },
-        }}
-      >
-        <Tabs.Screen
-          name="index"
-          options={{
-            title: "Home",
-            tabBarLabel: "Home",
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="home-outline" color={color} size={size} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="appointments"
-          options={{
-            title: "Appointments",
-            tabBarLabel: "Appointments",
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="calendar-outline" color={color} size={size} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="profile"
-          options={{
-            title: "Profile",
-            tabBarLabel: "Profile",
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="person-outline" color={color} size={size} />
-            ),
-          }}
-        />
+    <Stack screenOptions={{ headerShown: false }}>
+      {/* Tabs Navigator */}
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
 
-        // Hide tab pages
-        <Tabs.Screen
-          name="booking"
-          options={{
-            href: null,
-          }}
-        />
-        <Tabs.Screen
-          name="doctor/[id]"
-          options={{
-            href: null,
-          }}
-        />
-
-      </Tabs>
-    </>
-  );
+      {/* Hidden pages (outside of tabs) */}
+      <Stack.Screen name="booking" options={{ presentation: "modal" }} />
+      <Stack.Screen name="doctor/[id]" options={{ headerShown: true, title: "Doctor" }} />
+      <Stack.Screen name="components/AppointmentItem" options={{ headerShown: false }} />
+      <Stack.Screen name="components/DoctorCard" options={{ headerShown: false }} />
+      <Stack.Screen name="components/FilterBar" options={{ headerShown: false }} />
+    </Stack>
+  )
 }

@@ -1,20 +1,39 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, ScrollView, } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { supabase } from "../src/api/supabaseClient";
+import { supabase } from "../../src/api/supabaseClient";
 import { useRouter } from "expo-router";
+import { useRole } from "../../src/context/RoleContext";
+import * as SecureStore from "expo-secure-store";
 
 export default function ProfilePage() {
   const router = useRouter();
+  const { activeRole, setActiveRole } = useRole();
   const [user, setUser] = useState<any>(null);
   const [role, setRole] = useState<"Patient" | "Doctor" | "">("");
+  const [isSwitching, setIsSwitching] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data?.user) {
-        setUser(data.user);
-        const userRole = data.user.user_metadata?.role || "Patient";
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      setUser(user);
+
+      // get role from your profiles table
+      const { data: profileRow, error } = await supabase
+        .from("profiles")
+        .select("role, full_name, avatar_url")
+        .eq("id", user.id)
+        .maybeSingle();
+
+
+      if (!error && profileRow) {
+        setRole(profileRow.role === "doctor" ? "Doctor" : "Patient");
+        // optional : prefer DB full_name/avatar over user_metadata
+      } else {
+        // fallback to user_metadata for now
+        const userRole = user.user_metadata?.role || "Patient";
         setRole(userRole === "doctor" ? "Doctor" : "Patient");
       }
     })();
@@ -28,7 +47,7 @@ export default function ProfilePage() {
 
 
     const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
-      redirectTo: "medicalplus://auth/reset",
+      redirectTo: "medicalplus://(auth)/reset",
     });
 
     if (error) {
@@ -44,16 +63,37 @@ export default function ProfilePage() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    Alert.alert("Logged out", "You have been signed out.", [
-      {
-        text: "OK",
-        onPress: () => {
-          // send them whereveer your unauthenticated flow starts (login screen ideally)
-          router.replace("/auth/login");
-        },
-      },
-    ]);
+    try {
+      await supabase.auth.signOut();
+      await SecureStore.deleteItemAsync("ActiveRole"); // clear persisted role
+      router.replace("/(auth)/login");
+    } catch (err) {
+      console.error("Logout error:", err);
+      Alert.alert("Error", "Failed to log out. Please try again.");
+    }
+  };
+
+  // Switch between modes (doctor <> patient) and immediately redirect
+  const handleSwitchRole = async () => {
+    if (isSwitching) return; // prevent double press
+    setIsSwitching(true);
+
+    try {
+      const newRole = activeRole === "doctor" ? "patient" : "doctor";
+      await setActiveRole(newRole);
+
+      // navigate to correct root
+      if (newRole === "doctor") {
+        router.replace("/(doctor)/(tabs)");
+      } else {
+        router.replace("/(patient)/(tabs)/profile");
+      }
+    } catch (err) {
+      console.error("Error switching role:", err);
+      Alert.alert("Error", "Unable to switch mode. Please try again.");
+    } finally {
+      setIsSwitching(false);
+    }
   };
 
   if (!user) {
@@ -91,7 +131,9 @@ export default function ProfilePage() {
               size={14}
               color="#0077b6"
             />
-            <Text style={styles.roleChipText}>{role}</Text>
+            <Text style={styles.roleChipText}>
+              {role} ({activeRole === "doctor" ? "Doctor Mode" : "Patient Mode"})
+            </Text>
           </View>
         </View>
 
@@ -114,7 +156,7 @@ export default function ProfilePage() {
               <Ionicons name="id-card-outline" size={18} color="#0077b6" />
             </View>
             <View style={styles.infoTextCol}>
-              <Text style={styles.infoTitle}>Role</Text>
+              <Text style={styles.infoTitle}>Registered Role</Text>
               <Text style={styles.infoValue}>{role}</Text>
             </View>
           </View>
@@ -123,7 +165,7 @@ export default function ProfilePage() {
         {/* Actions */}
         <View style={styles.actionSection}>
 
-          <TouchableOpacity style={[styles.primaryButton, { marginBottom: 12 }]} onPress={() => router.push("/profile/edit")}>
+          <TouchableOpacity style={[styles.primaryButton, { marginBottom: 12 }]} onPress={() => router.push("/(common)/edit-profile")}>
             <Ionicons name="create-outline" size={20} color="#fff" />
             <Text style={styles.primaryButtonText}>Edit Profile</Text>
           </TouchableOpacity>
@@ -133,30 +175,37 @@ export default function ProfilePage() {
             <Text style={styles.primaryButtonText}>Reset Password</Text>
           </TouchableOpacity>
 
+          {/* Switch Role with redirect */}
+          {role === "Doctor" && (
+            <TouchableOpacity
+              disabled={isSwitching}
+              style={[
+                styles.primaryButton, 
+                { 
+                  backgroundColor: "#03045e",
+                  opacity: isSwitching ? 0.6 : 1,
+                },
+              ]}
+              onPress={handleSwitchRole}
+            >
+              <Ionicons name="swap-horizontal-outline" size={20} color="#fff" />
+              <Text style={styles.primaryButtonText}>
+                {isSwitching
+                  ? "Switching..."
+                  : `Switch to ${activeRole === "doctor" ? "Patient" : "Doctor"} Mode`}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Logout */}
           <TouchableOpacity style={styles.secondaryButton} onPress={handleLogout}>
             <Ionicons name="log-out-outline" size={20} color="#d00000" />
             <Text style={styles.secondaryButtonText}>Logout</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Doctor-only shrtcut (nice future enhancement) */}
-        {role === "Doctor" && (
-          <View style={styles.extraSection}>
-            <TouchableOpacity
-              style={styles.dashboardButton}
-              onPress={() => router.push("./doctor")}
-            >
-              <Ionicons name="stats-chart-outline" size={20} color="#fff" />
-              <Text style={styles.dashboardButtonText}>Go to Doctor Dashboard</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
       </ScrollView>
-    </View>
-
-
-    
+    </View>  
   );
 }
 

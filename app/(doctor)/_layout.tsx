@@ -1,60 +1,33 @@
-import { Tabs } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { Stack } from "expo-router";
 
-export default function DoctorLayout() {
+export default function DoctorRootLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: true,
-        tabBarActiveTintColor: "#0077b6",
-        tabBarStyle: { paddingBottom: 6, height: 60 },
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Dashboard",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="speedometer-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="appointments"
-        options={{
-          title: "Appointments",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="availability"
-        options={{
-          title: "Availablity",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="business-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
+    <Stack screenOptions={{ headerShown: false }}>
+      {/* Main tab navigation */}
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+
+      {/* Hidden or non-tab screens */}
+      <Stack.Screen
         name="clinics"
         options={{
+          headerShown: true,
           title: "Clinics",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="business-outline" size={size} color={color} />
-          ),
         }}
       />
-      <Tabs.Screen
+      <Stack.Screen
         name="services"
         options={{
+          headerShown: true,
           title: "Services",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="briefcase-outline" size={size} color={color} />
-          ),
         }}
       />
-    </Tabs>
+      <Stack.Screen
+        name="patients/[id]"
+        options={{
+          headerShown: true,
+          title: "Patient Details",
+        }}
+      />
+    </Stack>
   );
 }

@@ -21,12 +21,12 @@ export default function loginScreen() {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       const user = data.user;
-      if (user.user_metadata.role === "doctor") router.replace("/(doctor)");
-      else router.replace("/(patient)");
+      if (user.user_metadata.role === "doctor") router.replace("/(doctor)/(tabs)");
+      else router.replace("/(patient)/(tabs)");
 
       setTimeout(() => {
         setLoading(false);
-        router.replace("/(patient)");
+        router.replace("/(patient)/(tabs)");
 
         // Redirect based on role
         
@@ -76,11 +76,11 @@ export default function loginScreen() {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push("/auth/signup")}>
+        <TouchableOpacity onPress={() => router.push("/(auth)/signup")}>
           <Text style={styles.link}>Don't have an Account? Sign Up</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push("/auth/forgot-pasword")}>
+        <TouchableOpacity onPress={() => router.push("/(auth)/forgot-pasword")}>
           <Text style={styles.linkSecondary}>Forgot Password?</Text>
         </TouchableOpacity>
       </View>

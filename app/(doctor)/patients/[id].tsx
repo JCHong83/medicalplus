@@ -1,10 +1,10 @@
 import { View, Text } from 'react-native'
 import React from 'react'
 
-export default function SectionHeader() {
+export default function patientId() {
   return (
     <View>
-      <Text>SectionHeader</Text>
+      <Text>patientId</Text>
     </View>
   )
 }

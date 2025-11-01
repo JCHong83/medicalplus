@@ -103,7 +103,7 @@ export default function bookScreen() {
   // Dummy for now > to be modified later when connecting to Supabase
   const handleUpdateAppointment = async () => {
     Alert.alert("Appointment updated!", "Your changes have been saved.");
-    router.replace("/(patient)/appointments");
+    router.replace("/(patient)/(tabs)/appointments");
   };
 
   return (

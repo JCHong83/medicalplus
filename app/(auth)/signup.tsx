@@ -47,7 +47,7 @@ export default function SignupScreen() {
       if (!user) {
         setLoading(false);
         Alert.alert("Check your inbox", "Confirm your email before logging in.");
-        router.replace("/auth/login");
+        router.replace("/(auth)/login");
         return;
       }
 
@@ -85,7 +85,7 @@ export default function SignupScreen() {
           ? "Your doctor account is pending verification."
           : "Welcome! You can now book appointments."
       );
-      router.replace(role === "doctor" ? "/(doctor)" : "/(patient)");
+      router.replace(role === "doctor" ? "/(doctor)/(tabs)" : "/(patient)/(tabs)");
     } catch (err: any) {
       setError(err.message || "SignUp failed");
       setLoading(false);
@@ -173,7 +173,7 @@ export default function SignupScreen() {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push("/auth/login")}>
+        <TouchableOpacity onPress={() => router.push("/(auth)/login")}>
           <Text style={styles.link}>Already have an account? Login</Text>
         </TouchableOpacity>
       </View>

@@ -1,32 +1,91 @@
-import { createContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../api/supabaseClient';
 import { saveItem, getItem, removeItem } from '../utils/storage';
-import { View, Text } from 'react-native';
-import React from 'react';
+import { Session, User } from "@supabase/supabase-js";
 
-export const AuthContext = createContext<any>(null);
+// Define types for clarity
+interface AuthContextType {
+  user: User | null;
+  session: Session | null;
+  loading: boolean;
+  refreshSession: () => Promise<void>;
+}
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<any>(null);
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  session: null,
+  loading: true,
+  refreshSession: async () => {},
+});
+
+export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Load stored session on startup and listen for auth changes
   useEffect(() => {
-    (async () => {
-      const stored = await getItem('session');
-      if (stored) setSession(JSON.parse(stored));
-      setLoading(false);
-    })();
+    const initAuth = async () => {
+      try {
+        const stored = await getItem("session");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          setSession(parsed);
+          setUser(parsed?.user ?? null);
+        } else {
+          // fallback to Supabase session if available
+          const { data } = await supabase.auth.getSession();
+          setSession(data.session);
+          setUser(data.session?.user ?? null);
+        }
+      } catch (err) {
+        console.error("Error initializing session:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initAuth();
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) saveItem('session', JSON.stringify(session));
-      else removeItem('session');
+      if (session) {
+        saveItem("session", JSON.stringify(session));
+      } else {
+        removeItem("session");
+      }
       setSession(session);
+      setUser(session?.user ?? null);
     });
 
-    return () => listener.subscription.unsubscribe();
+    return () => {
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
-  if (loading) return null;
+  // Manual refresh helper
+  const refreshSession = async () => {
+    setLoading(true);
+    const { data, error } = await supabase.auth.getSession();
+    if (error) console.error("Error refreshing session:", error);
+    if (data.session) {
+      setSession(data.session);
+      setUser(data.session.user);
+      await saveItem("session", JSON.stringify(data.session));
+    } else {
+      setSession(null);
+      setUser(null);
+      await removeItem("session");
+    }
+    setLoading(false);
+  };
 
-  return <AuthContext.Provider value={{ session }}>{children}</AuthContext.Provider>;
-}
+  // Provide full context
+  return (
+    <AuthContext.Provider value={{ user, session, loading, refreshSession}}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+// Convenience hook
+export const useAuth = () => useContext(AuthContext);
