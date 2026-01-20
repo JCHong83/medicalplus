@@ -1,6 +1,9 @@
 import { Stack } from "expo-router";
 
+
+
 export default function DoctorRootLayout() {
+  console.log("✅ [Doctor Tabs Loaded]");
   return (
     <Stack screenOptions={{ headerShown: false }}>
       {/* Main tab navigation */}

@@ -23,9 +23,9 @@ export default function LandingPage() {
         const dbRole = profile?.role ?? "patient";
 
         if (dbRole === "doctor") {
-          router.replace("/(doctor)/(tabs)");
+          router.replace("/(protected)/doctor/(tabs)");
         } else {
-          router.replace("/(patient)/(tabs)");
+          router.replace("/(protected)/patient/(tabs)");
         }
       } else {
         setCheckingSession(false);

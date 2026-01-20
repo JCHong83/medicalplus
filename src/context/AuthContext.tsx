@@ -25,58 +25,83 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Load stored session on startup and listen for auth changes
   useEffect(() => {
+    let mounted = true;
+
     const initAuth = async () => {
       try {
-        const stored = await getItem("session");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          setSession(parsed);
-          setUser(parsed?.user ?? null);
-        } else {
-          // fallback to Supabase session if available
-          const { data } = await supabase.auth.getSession();
+        // Step 1. Always start from Supabase
+        const { data, error } = await supabase.auth.getSession();
+        if (error) console.error("Error getting session:", error);
+
+        if (mounted) {
           setSession(data.session);
           setUser(data.session?.user ?? null);
         }
+        
+        // Step 2. Optional local persistence for faster reloads
+        if (data.session) {
+          await saveItem("session", JSON.stringify(data.session));
+        } else {
+          await removeItem("session");
+        }
+
+        // Step 3. Subscribe to future auth state changes
+        const { data: subscription } = supabase.auth.onAuthStateChange(
+          async (_event, session) => {
+            console.log("Auth state changed:", _event);
+
+            if (mounted) {
+              setSession(session);
+              setUser(session?.user ?? null);
+            }
+
+            if (session) {
+              await saveItem("session", JSON.stringify(session));
+            } else {
+              await removeItem("session");
+            }
+          }
+        );
+
+        // Step 4. Mark as done
+        if (mounted) setLoading(false);
+
+        // Step 5. Cleanup
+        return () => {
+          mounted = false;
+          subscription.subscription.unsubscribe();
+        };
       } catch (err) {
-        console.error("Error initializing session:", err);
-      } finally {
-        setLoading(false);
+        console.error("Error initializing auth:", err);
+        if (mounted) setLoading(false);
       }
     };
 
     initAuth();
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        saveItem("session", JSON.stringify(session));
-      } else {
-        removeItem("session");
-      }
-      setSession(session);
-      setUser(session?.user ?? null);
-    });
-
-    return () => {
-      listener.subscription.unsubscribe();
-    };
   }, []);
 
   // Manual refresh helper
   const refreshSession = async () => {
+    console.log("Manually refreshing session...");
     setLoading(true);
-    const { data, error } = await supabase.auth.getSession();
-    if (error) console.error("Error refreshing session:", error);
-    if (data.session) {
-      setSession(data.session);
-      setUser(data.session.user);
-      await saveItem("session", JSON.stringify(data.session));
-    } else {
-      setSession(null);
-      setUser(null);
-      await removeItem("session");
+
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) console.error("Error refreshing session:", error);
+      if (data.session) {
+        setSession(data.session);
+        setUser(data.session.user);
+        await saveItem("session", JSON.stringify(data.session));
+      } else {
+        setSession(null);
+        setUser(null);
+        await removeItem("session");
+      }
+    } catch (err) {
+      console.error("Error refreshing session:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   // Provide full context

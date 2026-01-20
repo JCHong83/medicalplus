@@ -6,8 +6,9 @@ type Role = "patient" | "doctor";
 
 interface RoleContextType {
   activeRole: Role;
-  setActiveRole: (role: Role) => Promise<void>;
   isLoading: boolean;
+  setActiveRole: (role: Role) => Promise<void>;
+  setActiveRoleAndWait: (role: Role) => Promise<void>;
   syncRoleWithUser: () => Promise<void>;
   resetRole: () => Promise<void>;
 }
@@ -51,7 +52,20 @@ export const RoleProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Sync the role with Supabase profile
+  // Save + Wait until persisted before continuing (for navigation)
+  const setActiveRoleAndWait = async (role: Role) => {
+    try {
+      await SecureStore.setItemAsync("activeRole", role);
+      // Extra safety delay to ensure persistence completes before redirect
+      setActiveRoleState(role);
+      await new Promise((res) => setTimeout(res, 100)); // slight async delay
+    } catch (err) {
+      console.error("Error saving role with wait:", err)
+    }
+  };
+
+  // Fetch the user's DB role and align with local role
+  // Called after login or when auth session changes
   const syncRoleWithUser = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -69,7 +83,12 @@ export const RoleProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const dbRole = profile?.role === "doctor" ? "doctor" : "patient";
-      await setActiveRole(dbRole);
+
+      // Only update if different to prevent unnecessary rerenders
+      if (dbRole !== activeRole) {
+        await SecureStore.setItemAsync("activeRole", dbRole);
+        setActiveRoleState(dbRole);
+      }
     } catch (err) {
       console.error("Failed to sync role:", err);
     }
@@ -86,12 +105,13 @@ export const RoleProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <RoleContext.Provider value={{ activeRole, setActiveRole, isLoading, syncRoleWithUser, resetRole }}>
+    <RoleContext.Provider value={{ activeRole, setActiveRole, setActiveRoleAndWait, isLoading, syncRoleWithUser, resetRole }}>
       {children}
     </RoleContext.Provider>
   );
 };
 
+// Hook
 export const useRole = (): RoleContextType => {
   const context = useContext(RoleContext);
   if (!context) {

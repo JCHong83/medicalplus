@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Image, ActivityIndicator } from 'react-native';
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { supabase } from '../../../src/api/supabaseClient';
+import { supabase } from '../../../../src/api/supabaseClient';
 
 interface Doctor {
   id: string;
@@ -89,7 +89,7 @@ export default function PatientHomeScreen() {
         <TouchableOpacity
           style={styles.bookButton}
           onPress={() => router.push({
-            pathname: "/(patient)/booking",
+            pathname: "/(protected)/patient/booking",
             params: { doctorId: item.id },
           })}
         >

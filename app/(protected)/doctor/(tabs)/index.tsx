@@ -2,9 +2,9 @@ import React, { useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { Href, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { supabase } from "../../../src/api/supabaseClient";
+import { supabase } from "../../../../src/api/supabaseClient";
 import * as SecureStore from "expo-secure-store";
-import { useRole } from "../../../src/context/RoleContext";
+import { useRole } from "../../../../src/context/RoleContext";
 
 export default function DoctorDashboard() {
   const router = useRouter();
@@ -27,7 +27,7 @@ export default function DoctorDashboard() {
 
     try {
       await setActiveRole("patient");
-      router.replace("/(patient)/(tabs)");
+      router.replace("/(protected)/patient/(tabs)");
     } catch (err) {
       console.error("Error switching to patient mode:", err);
       Alert.alert("Error", "Unable to switch to patient mode. Please try again.");

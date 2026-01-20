@@ -67,7 +67,7 @@ export default function AppointmentPage() {
   const handleModify = (appointment: Appointment) => {
     // Navigate to booking page in "edit" mode
     router.push({
-      pathname: "/(patient)/booking",
+      pathname: "/(protected)/patient/booking",
       params: {
         appointmentId: appointment.id,
         doctorId: appointment.doctorName, // This is for now a dummy

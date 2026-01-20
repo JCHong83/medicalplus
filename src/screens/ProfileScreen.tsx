@@ -1,27 +1,21 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, ScrollView, } from "react-native";
+import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../api/supabaseClient";
-import { useRouter } from "expo-router";
 import { useRole } from "../context/RoleContext";
-import * as SecureStore from "expo-secure-store";
+import { useRouter } from "expo-router";
+
 
 export default function ProfileScreen() {
-  const router = useRouter();
-  const { activeRole, setActiveRole } = useRole();
+  const { activeRole, setActiveRoleAndWait } = useRole();
   const [user, setUser] = useState<any>(null);
-  const [role, setRole] = useState<"Patient" |"Doctor" | "">("");
   const [isSwitching, setIsSwitching] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data?.user) {
-        setUser(data.user);
-        const userRole = data.user.user_metadata?.role || "Patient";
-        setRole(userRole === "doctor" ? "Doctor" : "Patient");
-      }
-    })();
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user) setUser(data.user);
+    });
   }, []);
 
   const handlePasswordReset = async () => {
@@ -36,7 +30,6 @@ export default function ProfileScreen() {
 
     if (error) {
       Alert.alert("Error", error.message);
-      console.error("Password reset error:", error);
       return;
     }
 
@@ -46,36 +39,24 @@ export default function ProfileScreen() {
     );
   };
 
-  const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-      await SecureStore.deleteItemAsync("ActiveRole");
-      router.replace("/(auth)/login");
-    } catch (err) {
-      console.error("Logout error:", err);
-      Alert.alert("Error", "Failed to log out. Please try again.");
-    }
-  };
 
   const handleSwitchRole = async () => {
     if (isSwitching) return;
     setIsSwitching(true);
 
     try {
-      const newRole = activeRole === "doctor" ? "patient" : "doctor";
-      await setActiveRole(newRole);
+      const nextRole = activeRole === "doctor" ? "patient" : "doctor";
+      await setActiveRoleAndWait(nextRole);
 
-      if (newRole === "doctor") {
-        router.replace("/(doctor)/(tabs)");
-      } else {
-        router.replace("/(patient)/(tabs)");
-      }
     } catch (err) {
-      console.error("Error switching role:", err);
       Alert.alert("Error", "Unable to switch mode. Please try again.");
     } finally {
       setIsSwitching(false);
     }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
   };
 
   if (!user) {
@@ -90,96 +71,147 @@ export default function ProfileScreen() {
   const avatarUrl = user.user_metadata?.avatar_url || "https://cdn-icons-png.flaticon.com/512/847/847969.png";
   const email = user.email;
 
-  return (
-    <View style={styles.screenContainer}>
-      <ScrollView
-        contentContainerStyle={styles.scrollBody}
-        showsVerticalScrollIndicator={false}
+  // REUSABLE COMPONENTS
+
+  // InfoRow
+  interface InfoRowProps {
+    icon: React.ComponentProps<typeof Ionicons>['name'];
+    label: string;
+    value: string;
+  }
+
+  function InfoRow({ icon, label, value }: InfoRowProps) {
+    return (
+      <View style={styles.infoRow}>
+        <View style={styles.infoIconCircle}>
+          <Ionicons name={icon} size={18} color="#0077b6" />
+        </View>
+        <View style={styles.infoTextCol}>
+          <Text style={styles.infoTitle}>{label}</Text>
+          <Text style={styles.infoValue}>{value}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Primary Button
+  interface PrimaryButtonProps {
+    icon: React.ComponentProps<typeof Ionicons>['name'];
+    label: string;
+    onPress: () => void;
+    disabled?: boolean;
+    dark?: boolean; // optional dark variation
+  }
+
+  function PrimaryButton({ icon, label, onPress, disabled, dark }: PrimaryButtonProps) {
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        disabled={disabled}
+        style={[
+          styles.primaryButton,
+          dark && { backgroundColor: "#03045e" },
+          disabled && { opacity: 0.6 },
+        ]}
       >
-        <View style={styles.headerCard}>
+        <Ionicons name={icon} size={20} color="#fff" />
+        <Text style={styles.primaryButtonText}>{label}</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  // Secondary Button
+  interface SecondaryButtonProps {
+    icon: React.ComponentProps<typeof Ionicons>['name'];
+    label: string;
+    onPress: () => void;
+    disabled?: boolean;
+  }
+
+  function SecondaryButton({ icon, label, onPress, disabled }: SecondaryButtonProps) {
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        disabled={disabled}
+        style={[
+          styles.secondaryButton,
+          disabled && { opacity: 0.6 },
+        ]}
+      >
+        <Ionicons name={icon} size={20} color="#d00000" />
+        <Text style={styles.secondaryButtonText}>{label}</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  // The structure
+
+  return (
+    <View style={styles.container}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scroll}
+      >
+        {/* HEADER */}
+        <View style={styles.header}>
           <View style={styles.avatarWrapper}>
             <Image source={{ uri: avatarUrl }} style={styles.avatar} />
           </View>
 
-          <Text style={styles.nameText}>{fullName}</Text>
-          <View style={styles.roleChip}>
+          <Text style={styles.name}>{fullName}</Text>
+
+          <View style={styles.roleBadge}>
             <Ionicons
-              name={role === "Doctor" ? "medkit-outline" : "person-outline"}
+              name={activeRole === "doctor" ? "medkit-outline" : "person-outline"}
               size={14}
               color="#0077b6"
             />
-            <Text style={styles.roleChipText}>
-              {role} ({activeRole === "doctor" ? "Doctor Mode" : "Patient Mode"})
+            <Text style={styles.roleText}>
+              {activeRole === "doctor" ? "Doctor" : "Patient"}
             </Text>
           </View>
         </View>
 
-        {/* info */}
-        <View style={styles.infoSection}>
-          <Text style={styles.sectionLabel}>Account Info</Text>
-
-          <View style={styles.infoRow}>
-            <View style={styles.infoIconCircle}>
-              <Ionicons name="mail-outline" size={18} color="#0077b6" />
-            </View>
-            <View style={styles.infoTextCol}>
-              <Text style={styles.infoTitle}>Email</Text>
-              <Text style={styles.infoValue}>{email}</Text>
-            </View>
-          </View>
-
-          <View style={styles.infoRow}>
-            <View style={styles.infoIconCircle}>
-              <Ionicons name="id-card-outline" size={18} color="#0077b6" />
-            </View>
-            <View style={styles.infoTextCol}>
-              <Text style={styles.infoTitle}>Registered Role</Text>
-              <Text style={styles.infoValue}>{role}</Text>
-            </View>
-          </View>
+        {/* ACCOUNT INFO */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Account Info</Text>
+          
+          <InfoRow icon="mail-outline" label="Email" value={email} />
+          <InfoRow icon="id-card-outline" label="Registered Role" value={activeRole === "doctor" ? "Doctor" : "Patient"} />
         </View>
 
-        {/* actions */}
-        <View style={styles.actionSection}>
-          <TouchableOpacity
-            style={[styles.primaryButton, { marginBottom: 12 }]}
+        {/* ACTIONS */}
+        <View style={styles.card}>
+          <PrimaryButton
+            icon="create-outline"
+            label="Edit Profile"
             onPress={() => router.push("/(common)/edit-profile")}
-          >
-            <Ionicons name="create-outline" size={20} color="#fff" />
-            <Text style={styles.primaryButtonText}>Edit Profile</Text>
-          </TouchableOpacity>
+          />
 
-          <TouchableOpacity
-            style={[styles.primaryButton, { marginBottom: 12 }]}
+          <PrimaryButton
+            icon="lock-closed-outline"
+            label="Reset Password"
             onPress={handlePasswordReset}
-          >
-            <Ionicons name="lock-closed-outline" size={20} color="#fff" />
-            <Text style={styles.primaryButtonText}>Reset Password</Text>
-          </TouchableOpacity>
+          />
 
-          <TouchableOpacity
-            disabled={isSwitching}
-            style={[
-              styles.primaryButton,
-              {
-                backgroundColor: "#03045e",
-                opacity: isSwitching ? 0.6 : 1,
-              },
-            ]}
-            onPress={handleSwitchRole}
-          >
-            <Ionicons name="swap-horizontal-outline" size={20} color="#fff" />
-            <Text style={styles.primaryButtonText}>
-              {isSwitching
+          <PrimaryButton
+            icon="swap-horizontal-outline"
+            label={
+              isSwitching
                 ? "Switching..."
-                : `Switch to ${activeRole === "doctor" ? "Patient" : "Doctor"} Mode`}
-            </Text>
-          </TouchableOpacity>
+                : `switch to ${activeRole === "doctor" ? "Patient" : "Doctor"}`
+            }
+            disabled={isSwitching}
+            dark
+            onPress={handleSwitchRole}
+          />
 
-          <TouchableOpacity style={styles.secondaryButton} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={20} color="#d00000" />
-            <Text style={styles.secondaryButtonText}>Logout</Text>
-          </TouchableOpacity>
+          <SecondaryButton
+            icon="log-out-outline"
+            label="Logout"
+            onPress={handleLogout}
+          />
+
         </View>
       </ScrollView>
     </View>
@@ -188,34 +220,22 @@ export default function ProfileScreen() {
 
 
 const styles = StyleSheet.create({
-  screenContainer: {
+  container: {
     flex: 1,
     backgroundColor: "#f6f8fa",
-    paddingTop: 40,
-    paddingHorizontal: 16,
   },
-  scrollBody: {
-    paddingBottom: 60,
+  scroll: {
+    padding: 16,
+    paddingBottom: 40,
   },
-  loadingScreen: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#fff",
-  },
-  loadingText: {
-    color: "#555",
-    fontSize: 16,
-  },
-  headerCard: {
+
+  // HEADER
+  header: {
     backgroundColor: "#e6f2f9",
-    borderRadius: 16,
-    paddingVertical: 24,
-    paddingHorizontal: 16,
+    borderRadius: 20,
+    paddingVertical: 28,
     alignItems: "center",
     marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "rgba(0,119,182,0.15)",
   },
   avatarWrapper: {
     width: 96,
@@ -224,52 +244,51 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: "#0077b6",
     overflow: "hidden",
-    marginBottom: 12,
     backgroundColor: "#fff",
+    marginBottom: 12,
   },
   avatar: {
     width: "100%",
     height: "100%",
-    resizeMode: "cover",
   },
-  nameText: {
+  name: {
     fontSize: 20,
     fontWeight: "700",
     color: "#03045e",
-    textAlign: "center",
   },
-  roleChip: {
+  roleBadge: {
     flexDirection: "row",
-    backgroundColor: "#fff",
-    borderColor: "#0077b6",
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
     alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     marginTop: 8,
   },
-  roleChipText: {
-    color: "#0077b6",
-    fontWeight: "600",
+  roleText: {
+    marginLeft: 6,
     fontSize: 14,
-    marginLeft: 4,
+    fontWeight: "600",
+    color:"#0077b6",
   },
-  infoSection: {
+
+  // CARDS
+  card: {
     backgroundColor: "#fff",
     borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 20,
+    padding: 16,
     marginBottom: 20,
     borderWidth: 1,
     borderColor: "#e2e8f0",
   },
-  sectionLabel: {
+  cardTitle: {
     fontSize: 16,
     fontWeight: "600",
     color: "#03045e",
     marginBottom: 16,
   },
+
+  // INFOROW COMPONENT
   infoRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -297,14 +316,18 @@ const styles = StyleSheet.create({
     color: "#555",
     marginTop: 2,
   },
-  actionSection: {
+
+  loadingScreen: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: "#fff",
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 20,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
   },
+  loadingText: {
+    color: "#555",
+    fontSize: 16,
+  },
+ 
   primaryButton: {
     flexDirection: "row",
     alignItems: "center",

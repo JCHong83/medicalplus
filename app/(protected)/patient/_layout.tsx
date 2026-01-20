@@ -1,6 +1,8 @@
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 
 export default function PatientRootLayout() {
+
+  console.log("✅ [Patient Tabs Loaded]", new Error().stack);
   return (
     <Stack screenOptions={{ headerShown: false }}>
       {/* Tabs Navigator */}

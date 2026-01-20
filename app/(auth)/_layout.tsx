@@ -1,16 +1,15 @@
 import React from 'react';
-import { Stack } from "expo-router";
+import { Slot, Redirect } from "expo-router";
+import { useAuth } from '@/context/AuthContext';
 
 export default function AuthLayout() {
-  return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        animation: "slide_from_right",
-      }}
-    >
-      <Stack.Screen name="login" options={{ title: "Login" }} />
-      <Stack.Screen name="signup" options={{ title: "Sign Up" }} />
-    </Stack>
-  );
+  const { user, loading } = useAuth();
+
+  if (loading) return null;
+
+  if (user) {
+    return <Redirect href="/(protected)" />;
+  }
+
+  return <Slot />;
 }

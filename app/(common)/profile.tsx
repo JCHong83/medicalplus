@@ -8,11 +8,12 @@ import * as SecureStore from "expo-secure-store";
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { activeRole, setActiveRole } = useRole();
+  const { activeRole, setActiveRoleAndWait, resetRole } = useRole();
   const [user, setUser] = useState<any>(null);
   const [role, setRole] = useState<"Patient" | "Doctor" | "">("");
   const [isSwitching, setIsSwitching] = useState(false);
 
+  // Fetch user & DB role once
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -20,7 +21,7 @@ export default function ProfilePage() {
 
       setUser(user);
 
-      // get role from your profiles table
+      // fetch from profiles table
       const { data: profileRow, error } = await supabase
         .from("profiles")
         .select("role, full_name, avatar_url")
@@ -30,21 +31,20 @@ export default function ProfilePage() {
 
       if (!error && profileRow) {
         setRole(profileRow.role === "doctor" ? "Doctor" : "Patient");
-        // optional : prefer DB full_name/avatar over user_metadata
       } else {
-        // fallback to user_metadata for now
+        // fallback to user_metadata
         const userRole = user.user_metadata?.role || "Patient";
         setRole(userRole === "doctor" ? "Doctor" : "Patient");
       }
     })();
   }, []);
 
+  // Reset Password
   const handlePasswordReset = async () => {
     if(!user?.email) {
       Alert.alert("Error", "No email found for this account.");
       return;
     } 
-
 
     const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
       redirectTo: "medicalplus://(auth)/reset",
@@ -62,10 +62,11 @@ export default function ProfilePage() {
     );
   };
 
+  // Logout: clear session + stored role
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
-      await SecureStore.deleteItemAsync("ActiveRole"); // clear persisted role
+      await resetRole();
       router.replace("/(auth)/login");
     } catch (err) {
       console.error("Logout error:", err);
@@ -73,20 +74,20 @@ export default function ProfilePage() {
     }
   };
 
-  // Switch between modes (doctor <> patient) and immediately redirect
+  // Toggle doctor/patient mode with guaranteed persistence
   const handleSwitchRole = async () => {
-    if (isSwitching) return; // prevent double press
+    if (isSwitching) return;
     setIsSwitching(true);
 
     try {
       const newRole = activeRole === "doctor" ? "patient" : "doctor";
-      await setActiveRole(newRole);
+      await setActiveRoleAndWait(newRole);
 
       // navigate to correct root
       if (newRole === "doctor") {
-        router.replace("/(doctor)/(tabs)");
+        router.replace("/(protected)/doctor/(tabs)");
       } else {
-        router.replace("/(patient)/(tabs)/profile");
+        router.replace("/(protected)/patient/(tabs)/profile");
       }
     } catch (err) {
       console.error("Error switching role:", err);
