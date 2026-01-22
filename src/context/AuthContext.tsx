@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../api/supabaseClient';
-import { saveItem, getItem, removeItem } from '../utils/storage';
 import { Session, User } from "@supabase/supabase-js";
 
 // Define types for clarity
@@ -25,80 +24,49 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Load stored session on startup and listen for auth changes
   useEffect(() => {
-    let mounted = true;
-
-    const initAuth = async () => {
+    // Get initial session on mount
+    const initialize = async () => {
       try {
-        // Step 1. Always start from Supabase
-        const { data, error } = await supabase.auth.getSession();
-        if (error) console.error("Error getting session:", error);
+        const { data: { session: initialSession }, error } = await supabase.auth.getSession();
 
-        if (mounted) {
-          setSession(data.session);
-          setUser(data.session?.user ?? null);
-        }
-        
-        // Step 2. Optional local persistence for faster reloads
-        if (data.session) {
-          await saveItem("session", JSON.stringify(data.session));
-        } else {
-          await removeItem("session");
-        }
+        if (error) console.error("[AuthContext] Error fetching initial session:", error);
 
-        // Step 3. Subscribe to future auth state changes
-        const { data: subscription } = supabase.auth.onAuthStateChange(
-          async (_event, session) => {
-            console.log("Auth state changed:", _event);
-
-            if (mounted) {
-              setSession(session);
-              setUser(session?.user ?? null);
-            }
-
-            if (session) {
-              await saveItem("session", JSON.stringify(session));
-            } else {
-              await removeItem("session");
-            }
-          }
-        );
-
-        // Step 4. Mark as done
-        if (mounted) setLoading(false);
-
-        // Step 5. Cleanup
-        return () => {
-          mounted = false;
-          subscription.subscription.unsubscribe();
-        };
+        setSession(initialSession);
+        setUser(initialSession?.user ?? null);
       } catch (err) {
-        console.error("Error initializing auth:", err);
-        if (mounted) setLoading(false);
+        console.error("[AuthContext] Unexpected error during init:", err);
+      } finally {
+        setLoading(false);
       }
     };
 
-    initAuth();
+    initialize();
+
+    // Listen for auth changes (Login, Logout, Token Refresh)
+    // Supabase handles the persistence of these changes automatically via the storage adapter.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+      console.log(`[AuthContext] Auth state changed: ${_event}`);
+
+      setSession(currentSession);
+      setUser(currentSession?.user ?? null);
+      setLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
-  // Manual refresh helper
   const refreshSession = async () => {
-    console.log("Manually refreshing session...");
-    setLoading(true);
-
     try {
-      const { data, error } = await supabase.auth.getSession();
-      if (error) console.error("Error refreshing session:", error);
-      if (data.session) {
-        setSession(data.session);
-        setUser(data.session.user);
-        await saveItem("session", JSON.stringify(data.session));
-      } else {
-        setSession(null);
-        setUser(null);
-        await removeItem("session");
-      }
+      setLoading(true);
+      const { data: { session: refreshedSession }, error } = await supabase.auth.refreshSession();
+      if (error) throw error;
+
+      setSession(refreshedSession);
+      setUser(refreshedSession?.user ?? null);
     } catch (err) {
-      console.error("Error refreshing session:", err);
+      console.error("[AuthContext] Manual refresh failed:", err);
     } finally {
       setLoading(false);
     }

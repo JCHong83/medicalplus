@@ -5,8 +5,10 @@ import { supabase } from "../api/supabaseClient";
 type Role = "patient" | "doctor";
 
 interface RoleContextType {
-  activeRole: Role;
+  activeRole: Role | null;  // The current UI mode (can be switched by doctors)
+  dbRole: Role | null;      // The permanent identity from the DB (cannot be switched)
   isLoading: boolean;
+  hasSynced: boolean;
   setActiveRole: (role: Role) => Promise<void>;
   setActiveRoleAndWait: (role: Role) => Promise<void>;
   syncRoleWithUser: () => Promise<void>;
@@ -16,10 +18,12 @@ interface RoleContextType {
 const RoleContext = createContext<RoleContextType | undefined>(undefined);
 
 export const RoleProvider = ({ children }: { children: ReactNode }) => {
-  const [activeRole, setActiveRoleState] = useState<Role>("patient");
+  const [activeRole, setActiveRoleState] = useState<Role | null>(null);
+  const [dbRole, setDbRole] = useState<Role | null>(null); // Track the permanent identity
   const [isLoading, setIsLoading] = useState(true);
+  const [hasSynced, setHasSynced] = useState(false);
 
-  // Load saved role from SecureStore when app starts
+  // Initial Load: Try to get last used mode from SecureStore
   useEffect(() => {
     const initRole = async () => {
       try {
@@ -27,13 +31,9 @@ export const RoleProvider = ({ children }: { children: ReactNode }) => {
 
         if (storedRole === "doctor" || storedRole === "patient") {
           setActiveRoleState(storedRole);
-        } else {
-          // default to patient mode
-          await SecureStore.setItemAsync("activeRole", "patient");
-          setActiveRoleState("patient");
-        }
+        } 
       } catch (err) {
-        console.error("Error loading role:", err);
+        console.error("Error loading role from SecureStore:", err);
       } finally {
         setIsLoading(false);
       }
@@ -41,6 +41,36 @@ export const RoleProvider = ({ children }: { children: ReactNode }) => {
 
     initRole();
   }, []);
+
+  // The Logic Engine: Sync with DB
+  const syncRoleWithUser = async () => {
+    try {
+      setIsLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+      
+      if (profile) {
+        const permanentRole = profile.role as Role;
+
+        // IDENTITY: Always set the DB role as the identity
+        setDbRole(permanentRole);
+        
+        // RESET: Always force activeRole to match dbRole on sync
+        setActiveRoleState(permanentRole);
+        await SecureStore.setItemAsync("activeRole", permanentRole);
+        console.log(`[RoleContext] Sync complete. Identity & Mode set to: ${permanentRole}`);
+      }
+    } finally {
+      setHasSynced(true);
+      setIsLoading(false);
+    }
+  };
 
   // Manual role update (toggle between modes)
   const setActiveRole = async (role: Role) => {
@@ -56,41 +86,11 @@ export const RoleProvider = ({ children }: { children: ReactNode }) => {
   const setActiveRoleAndWait = async (role: Role) => {
     try {
       await SecureStore.setItemAsync("activeRole", role);
-      // Extra safety delay to ensure persistence completes before redirect
       setActiveRoleState(role);
-      await new Promise((res) => setTimeout(res, 100)); // slight async delay
+      // Small buffer for persistence and state propagation
+      await new Promise((res) => setTimeout(res, 100));
     } catch (err) {
       console.error("Error saving role with wait:", err)
-    }
-  };
-
-  // Fetch the user's DB role and align with local role
-  // Called after login or when auth session changes
-  const syncRoleWithUser = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if(!user) return;
-
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (error) {
-        console.warn("Role sync error:", error);
-        return;
-      }
-
-      const dbRole = profile?.role === "doctor" ? "doctor" : "patient";
-
-      // Only update if different to prevent unnecessary rerenders
-      if (dbRole !== activeRole) {
-        await SecureStore.setItemAsync("activeRole", dbRole);
-        setActiveRoleState(dbRole);
-      }
-    } catch (err) {
-      console.error("Failed to sync role:", err);
     }
   };
 
@@ -99,13 +99,26 @@ export const RoleProvider = ({ children }: { children: ReactNode }) => {
     try {
       await SecureStore.deleteItemAsync("activeRole");
       setActiveRoleState("patient");
+      setDbRole(null); // Clear identity on logout
+      setHasSynced(false);
     } catch (err) {
       console.error("Error resetting role:", err);
     }
   };
 
   return (
-    <RoleContext.Provider value={{ activeRole, setActiveRole, setActiveRoleAndWait, isLoading, syncRoleWithUser, resetRole }}>
+    <RoleContext.Provider
+      value={{
+        activeRole,
+        dbRole,
+        isLoading,
+        setActiveRole,
+        setActiveRoleAndWait,
+        syncRoleWithUser,
+        resetRole,
+        hasSynced
+      }}
+    >
       {children}
     </RoleContext.Provider>
   );
@@ -114,8 +127,6 @@ export const RoleProvider = ({ children }: { children: ReactNode }) => {
 // Hook
 export const useRole = (): RoleContextType => {
   const context = useContext(RoleContext);
-  if (!context) {
-    throw new Error("useRole must be used within a RoleProvider");
-  }
+  if (!context) throw new Error("useRole must be used within a RoleProvider");
   return context;
 };
