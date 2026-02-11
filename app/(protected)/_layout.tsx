@@ -53,7 +53,7 @@ export default function ProtectedLayout() {
     // OR they are in a folder that doesn't match their activeRole
     if (isAtProtectedRoot || (currentRoleSegment && currentRoleSegment !== activeRole)) {
       console.log(`[ProtectedLayout] Guard triggering. Sending to /${activeRole}`);
-      router.replace(`/${activeRole}`);
+      // router.replace(`/${activeRole}`);
     }
 
     // Let RoleContext handle the authoritative DR check to avoid race conditions.
