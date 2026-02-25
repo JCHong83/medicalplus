@@ -22,8 +22,6 @@ function RootNavigator() {
         {/* Protected routes */}
         <Stack.Screen name="(protected)" options={{ headerShown: false }} />
 
-        {/* Shared routes */}
-        <Stack.Screen name="(common)" options={{ headerShown: false }} />
       </Stack>
     );
 }

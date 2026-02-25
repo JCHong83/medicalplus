@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode, } from 'react';
 import * as SecureStore from "expo-secure-store";
-import { supabase } from "../api/supabaseClient";
+import { supabase } from "../api/supabase";
 
 type Role = "patient" | "doctor";
 
@@ -10,7 +10,6 @@ interface RoleContextType {
   isLoading: boolean;
   hasSynced: boolean;
   setActiveRole: (role: Role) => Promise<void>;
-  setActiveRoleAndWait: (role: Role) => Promise<void>;
   syncRoleWithUser: () => Promise<void>;
   resetRole: () => Promise<void>;
 }
@@ -19,26 +18,32 @@ const RoleContext = createContext<RoleContextType | undefined>(undefined);
 
 export const RoleProvider = ({ children }: { children: ReactNode }) => {
   const [activeRole, setActiveRoleState] = useState<Role | null>(null);
-  const [dbRole, setDbRole] = useState<Role | null>(null); // Track the permanent identity
+  const [dbRole, setDbRole] = useState<Role | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasSynced, setHasSynced] = useState(false);
 
-  // Initial Load: Try to get last used mode from SecureStore
+  // Listen for Auth Changes
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        resetRole(); // Automatically wipe everything on logout
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Initial Load from storage
   useEffect(() => {
     const initRole = async () => {
       try {
         const storedRole = await SecureStore.getItemAsync("activeRole");
-
         if (storedRole === "doctor" || storedRole === "patient") {
-          setActiveRoleState(storedRole);
-        } 
-      } catch (err) {
-        console.error("Error loading role from SecureStore:", err);
+          setActiveRoleState(storedRole as Role);
+        }
       } finally {
         setIsLoading(false);
       }
     };
-
     initRole();
   }, []);
 
@@ -57,14 +62,15 @@ export const RoleProvider = ({ children }: { children: ReactNode }) => {
       
       if (profile) {
         const permanentRole = profile.role as Role;
-
-        // IDENTITY: Always set the DB role as the identity
         setDbRole(permanentRole);
         
-        // RESET: Always force activeRole to match dbRole on sync
-        setActiveRoleState(permanentRole);
-        await SecureStore.setItemAsync("activeRole", permanentRole);
-        console.log(`[RoleContext] Sync complete. Identity & Mode set to: ${permanentRole}`);
+        // Only override activeRole if it's currently null
+        if (!activeRole) {
+          setActiveRoleState(permanentRole);
+          await SecureStore.setItemAsync("activeRole", permanentRole);
+        }
+
+        console.log(`[RoleContext] Synced: ${permanentRole}, Active=${activeRole || permanentRole}`);
       }
     } finally {
       setHasSynced(true);
@@ -74,35 +80,37 @@ export const RoleProvider = ({ children }: { children: ReactNode }) => {
 
   // Manual role update (toggle between modes)
   const setActiveRole = async (role: Role) => {
-    try {
-      await SecureStore.setItemAsync("activeRole", role);
-      setActiveRoleState(role);
-    } catch (err) {
-      console.error("Error saving role:", err);
-    }
-  };
+  console.log("[RoleContext] START Switch to:", role);
+  try {
+    setIsLoading(true);
+    // 1. Update Storage
+    await SecureStore.setItemAsync("activeRole", role);
+    console.log("[RoleContext] 1. SecureStore Updated");
 
-  // Save + Wait until persisted before continuing (for navigation)
-  const setActiveRoleAndWait = async (role: Role) => {
-    try {
-      await SecureStore.setItemAsync("activeRole", role);
-      setActiveRoleState(role);
-      // Small buffer for persistence and state propagation
-      await new Promise((res) => setTimeout(res, 100));
-    } catch (err) {
-      console.error("Error saving role with wait:", err)
-    }
-  };
-
-  // Reset role on logout
+    // 2. Update State
+    setActiveRoleState(role);
+    console.log("[RoleContext] 2. State Updated");
+    
+    // 3. Small delay to ensure state propagates before redirect
+    await new Promise(resolve => setTimeout(resolve, 50)); 
+  } catch (err) {
+    console.error("[RoleContext] SWITCH CRASHED:", err);
+    throw err;
+  } finally {
+    setIsLoading(false);
+    console.log("[RoleContext] END Switch");
+  }
+};
+  
   const resetRole = async () => {
     try {
       await SecureStore.deleteItemAsync("activeRole");
-      setActiveRoleState("patient");
-      setDbRole(null); // Clear identity on logout
+      setActiveRoleState(null); // Don't default to 'patient', keep null until next login
+      setDbRole(null);
       setHasSynced(false);
+      console.log("[RoleContext] State wiped clean.");
     } catch (err) {
-      console.error("Error resetting role:", err);
+      console.error("Error resetting role:", err)
     }
   };
 
@@ -112,11 +120,10 @@ export const RoleProvider = ({ children }: { children: ReactNode }) => {
         activeRole,
         dbRole,
         isLoading,
+        hasSynced,
         setActiveRole,
-        setActiveRoleAndWait,
         syncRoleWithUser,
         resetRole,
-        hasSynced
       }}
     >
       {children}
@@ -125,7 +132,7 @@ export const RoleProvider = ({ children }: { children: ReactNode }) => {
 };
 
 // Hook
-export const useRole = (): RoleContextType => {
+export const useRole = () => {
   const context = useContext(RoleContext);
   if (!context) throw new Error("useRole must be used within a RoleProvider");
   return context;

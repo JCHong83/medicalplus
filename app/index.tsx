@@ -2,7 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import { useEffect, useState } from "react";
-import { supabase } from "../src/api/supabaseClient";
+import { supabase } from "../src/api/supabase";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -10,23 +10,14 @@ export default function LandingPage() {
 
   useEffect(() => {
     const checkSession = async () => {
+      // We only check if a session exists. 
+      // The ProtectedLayout handles the heavy lifting of roles.
       const { data: { session } } = await supabase.auth.getSession();
 
       if (session) {
-        // fetch the role from the profile table
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", session.user.id)
-          .single();
-
-        const dbRole = profile?.role ?? "patient";
-
-        if (dbRole === "doctor") {
-          router.replace("/(protected)/doctor/(tabs)");
-        } else {
-          router.replace("/(protected)/patient/(tabs)");
-        }
+        // Just push to the protected group. 
+        // Our new ProtectedLayout logic will take over from here.
+        router.replace("/(protected)" as Href);
       } else {
         setCheckingSession(false);
       }
@@ -51,11 +42,17 @@ export default function LandingPage() {
       </View>
 
       <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.buttonPrimary} onPress={() => router.push("(auth)/login" as Href)}>
+        <TouchableOpacity 
+          style={styles.buttonPrimary} 
+          onPress={() => router.push("/(auth)/login" as Href)}
+        >
           <Text style={styles.buttonText}>Login</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.buttonSecondary} onPress={() => router.push("(auth)/signup" as Href)}>
+        <TouchableOpacity 
+          style={styles.buttonSecondary} 
+          onPress={() => router.push("/(auth)/signup" as Href)}
+        >
           <Text style={styles.buttonTextAlt}>Sign Up</Text>
         </TouchableOpacity>
       </View>
@@ -64,6 +61,7 @@ export default function LandingPage() {
     </View>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {

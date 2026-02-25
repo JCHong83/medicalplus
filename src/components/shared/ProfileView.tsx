@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, ScrollView } from "react-native";
+import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, ScrollView, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { supabase } from "../api/supabaseClient";
-import { useRole } from "../context/RoleContext";
-import { useRouter } from "expo-router";
+import { supabase } from "../../api/supabase";
+import { useRole } from "../../context/RoleContext";
+import { useRouter, Href } from "expo-router";
 
-
-export default function ProfileScreen() {
-  const { activeRole, setActiveRoleAndWait } = useRole();
+export default function ProfileView() {
+  const { activeRole, dbRole, setActiveRole, resetRole, hasSynced } = useRole();
   const [user, setUser] = useState<any>(null);
   const [isSwitching, setIsSwitching] = useState(false);
   const router = useRouter();
@@ -24,7 +23,7 @@ export default function ProfileScreen() {
       return;
     }
 
-    const { error } = await supabase.auth.resetPasswordForEmail(user.emal, {
+    const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
       redirectTo: "medicalplus://auth/reset",
     });
 
@@ -33,12 +32,8 @@ export default function ProfileScreen() {
       return;
     }
 
-    Alert.alert(
-      "Password Reset",
-      "Check your inbox. We've sent you a link to reset your password."
-    );
+    Alert.alert("Password Reset", "Check your inbox for the reset link.");
   };
-
 
   const handleSwitchRole = async () => {
     if (isSwitching) return;
@@ -46,10 +41,10 @@ export default function ProfileScreen() {
 
     try {
       const nextRole = activeRole === "doctor" ? "patient" : "doctor";
-      await setActiveRoleAndWait(nextRole);
-
+      await setActiveRole(nextRole);
+      // ProtectedLayout handles the redirect automatically
     } catch (err) {
-      Alert.alert("Error", "Unable to switch mode. Please try again.");
+      Alert.alert("Error", "Unable to switch mode.");
     } finally {
       setIsSwitching(false);
     }
@@ -57,30 +52,25 @@ export default function ProfileScreen() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    await resetRole();
+    router.replace("/(auth)/login" as Href);
   };
 
-  if (!user) {
+  if (!user || !hasSynced) {
     return (
       <View style={styles.loadingScreen}>
+        <ActivityIndicator size="large" color="#0077b6" />
         <Text style={styles.loadingText}>Loading Profile...</Text>
       </View>
     );
   }
 
-  const fullName = user.user_metadata?.full_name || "Your Name";
+  const fullName = user.user_metadata?.full_name || "Medical User";
   const avatarUrl = user.user_metadata?.avatar_url || "https://cdn-icons-png.flaticon.com/512/847/847969.png";
   const email = user.email;
 
-  // REUSABLE COMPONENTS
-
-  // InfoRow
-  interface InfoRowProps {
-    icon: React.ComponentProps<typeof Ionicons>['name'];
-    label: string;
-    value: string;
-  }
-
-  function InfoRow({ icon, label, value }: InfoRowProps) {
+  // INTERNAL COMPONENTS
+  function InfoRow({ icon, label, value }: { icon: any, label: string, value: string }) {
     return (
       <View style={styles.infoRow}>
         <View style={styles.infoIconCircle}>
@@ -94,130 +84,88 @@ export default function ProfileScreen() {
     );
   }
 
-  // Primary Button
-  interface PrimaryButtonProps {
-    icon: React.ComponentProps<typeof Ionicons>['name'];
-    label: string;
-    onPress: () => void;
-    disabled?: boolean;
-    dark?: boolean; // optional dark variation
-  }
-
-  function PrimaryButton({ icon, label, onPress, disabled, dark }: PrimaryButtonProps) {
+  function ActionButton({ icon, label, onPress, disabled, dark, danger }: any) {
     return (
       <TouchableOpacity
         onPress={onPress}
         disabled={disabled}
         style={[
-          styles.primaryButton,
+          danger ? styles.secondaryButton : styles.primaryButton,
           dark && { backgroundColor: "#03045e" },
           disabled && { opacity: 0.6 },
         ]}
       >
-        <Ionicons name={icon} size={20} color="#fff" />
-        <Text style={styles.primaryButtonText}>{label}</Text>
+        <Ionicons name={icon} size={20} color={danger ? "#d00000" : "#fff"} />
+        <Text style={danger ? styles.secondaryButtonText : styles.primaryButtonText}>{label}</Text>
       </TouchableOpacity>
     );
   }
-
-  // Secondary Button
-  interface SecondaryButtonProps {
-    icon: React.ComponentProps<typeof Ionicons>['name'];
-    label: string;
-    onPress: () => void;
-    disabled?: boolean;
-  }
-
-  function SecondaryButton({ icon, label, onPress, disabled }: SecondaryButtonProps) {
-    return (
-      <TouchableOpacity
-        onPress={onPress}
-        disabled={disabled}
-        style={[
-          styles.secondaryButton,
-          disabled && { opacity: 0.6 },
-        ]}
-      >
-        <Ionicons name={icon} size={20} color="#d00000" />
-        <Text style={styles.secondaryButtonText}>{label}</Text>
-      </TouchableOpacity>
-    );
-  }
-
-  // The structure
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scroll}
-      >
-        {/* HEADER */}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        
+        {/* HEADER: Shows Current View State */}
         <View style={styles.header}>
           <View style={styles.avatarWrapper}>
             <Image source={{ uri: avatarUrl }} style={styles.avatar} />
           </View>
-
           <Text style={styles.name}>{fullName}</Text>
-
           <View style={styles.roleBadge}>
-            <Ionicons
-              name={activeRole === "doctor" ? "medkit-outline" : "person-outline"}
-              size={14}
-              color="#0077b6"
-            />
+            <Ionicons name={activeRole === "doctor" ? "medkit-outline" : "person-outline"} size={14} color="#0077b6" />
             <Text style={styles.roleText}>
-              {activeRole === "doctor" ? "Doctor" : "Patient"}
+              {activeRole === "doctor" ? "Doctor Mode" : "Patient Mode"}
             </Text>
           </View>
         </View>
 
-        {/* ACCOUNT INFO */}
+        {/* ACCOUNT INFO: Shows Permanent Database Identity */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Account Info</Text>
-          
           <InfoRow icon="mail-outline" label="Email" value={email} />
-          <InfoRow icon="id-card-outline" label="Registered Role" value={activeRole === "doctor" ? "Doctor" : "Patient"} />
+          <InfoRow 
+            icon="id-card-outline" 
+            label="Registered Role" 
+            value={dbRole === "doctor" ? "Medical Professional" : "Standard Patient"} 
+          />
         </View>
 
         {/* ACTIONS */}
         <View style={styles.card}>
-          <PrimaryButton
+          <ActionButton
             icon="create-outline"
             label="Edit Profile"
-            onPress={() => router.push("/(common)/edit-profile")}
+            onPress={() => router.push("/(protected)/edit-profile" as Href)}
           />
 
-          <PrimaryButton
+          <ActionButton
             icon="lock-closed-outline"
             label="Reset Password"
             onPress={handlePasswordReset}
           />
 
-          <PrimaryButton
-            icon="swap-horizontal-outline"
-            label={
-              isSwitching
-                ? "Switching..."
-                : `switch to ${activeRole === "doctor" ? "Patient" : "Doctor"}`
-            }
-            disabled={isSwitching}
-            dark
-            onPress={handleSwitchRole}
-          />
+          {/* Logic: Only Doctors can see the Switcher */}
+          {dbRole === "doctor" && (
+            <ActionButton
+              icon="swap-horizontal-outline"
+              label={isSwitching ? "Switching..." : `Switch to ${activeRole === "doctor" ? "Patient" : "Doctor"} View`}
+              disabled={isSwitching}
+              dark
+              onPress={handleSwitchRole}
+            />
+          )}
 
-          <SecondaryButton
+          <ActionButton
             icon="log-out-outline"
             label="Logout"
+            danger
             onPress={handleLogout}
           />
-
         </View>
       </ScrollView>
     </View>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {

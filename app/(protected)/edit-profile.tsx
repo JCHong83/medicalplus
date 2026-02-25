@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, Image, TouchableOpacity, TextInput, Alert, ActivityIndicator } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
-import { supabase } from "../../src/api/supabaseClient";
+import { supabase } from "../../src/api/supabase";
 import { useRouter } from "expo-router";
 
 export default function EditProfilePage() {
