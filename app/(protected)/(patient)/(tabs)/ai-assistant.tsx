@@ -10,6 +10,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Mic, MessageSquare } from 'lucide-react-native';
 
+import { useVoiceHandler } from "../../../../src/hooks/useVoiceHandler";
+import { aiAgentService } from "../../../../src/api/aiAgent";
+
+
 const { width } = Dimensions.get('window');
 
 type AssistantState = 'ready' | 'listening' | 'thinking' | 'replying';
@@ -18,6 +22,8 @@ export default function AiAssistantScreen() {
   const [status, setStatus] = useState<AssistantState>('ready');
   const glowValue = useSharedValue(0);
   const orbScale = useSharedValue(1);
+
+  const { isRecording, startRecording, stopRecording } = useVoiceHandler();
 
   // Animation Logic: Pulsing Glow
   useEffect(() => {
@@ -53,13 +59,36 @@ export default function AiAssistantScreen() {
   const handlePressIn = () => {
     orbScale.value = withSpring(0.9);
     setStatus('listening');
-    // Start STT Logic here
+    // Start recording and trigger haptic feedback
+    startRecording();
   };
 
-  const handlePressOut = () => {
+  const handlePressOut = async () => {
     orbScale.value = withSpring(1);
     setStatus('thinking');
-    // Call aiAgentService here
+    // Call aiAgentService
+    const uri = await stopRecording();
+    if (uri) {
+      processVoice(uri);
+    }
+  };
+
+  const processVoice = async (uri: string) => {
+    try {
+      console.log("Sending auhdio to AI Agent...");
+      // In teh next step, we'll implement the actual fetch logic
+      // to send this file to the FastAPI server
+      const response = await aiAgentService.sendVoiceCommand(uri);
+      console.log("AI Response:", response);
+
+      setStatus('replying');
+
+    } catch (error) {
+      console.error("Agent Error:", error);
+      setStatus('ready')
+    } finally {
+      setTimeout(() => setStatus('ready'), 3000);
+    }
   };
 
   return (
