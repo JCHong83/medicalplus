@@ -19,6 +19,8 @@ export interface AgentResponse {
   };
   response_text: string;
   doctors: Array<{
+    id?: string; // Supabase ID if registered
+    place_id?: string; // Google Place ID if not registered
     name: string;
     address: string;
     rating: number;
@@ -27,29 +29,30 @@ export interface AgentResponse {
   }>;
 }
 
+// React Native FormData requires this specific shape
+interface ReactNativeFile {
+  uri: string;
+  name: string;
+  type: string;
+}
+
 // 2. The Service Class
-const AGENT_API_URL = process.env.EXPO_PUBLIC_AGENT_API_URL || "http://your-server-ip:8000";
+const AGENT_API_URL = process.env.EXPO_PUBLIC_AGENT_API_URL || "http://192.168.1.145:8000";
 
 export const aiAgentService = {
 
   // Captures current GPS and sends the conversation to the AI Agent
   sendChat: async (messages: ChatMessage[], userId?: string): Promise<AgentResponse> => {
     try {
-      // A. Get Location Permissions & Coordinates
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        throw new Error('Permission to access location was denied');
-      }
-
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      // B. Prepare Payload
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      const location = status === 'granted'
+        ? await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+        : null;
+      
       const payload = {
         messages,
-        lat: location.coords.latitude,
-        lng: location.coords.longitude,
+        lat: location?.coords.latitude || 45.4642, // Fallback to Milano if no GPS
+        lng: location?.coords.longitude || 9.1900,
         user_id: userId,
       };
 
@@ -78,34 +81,41 @@ export const aiAgentService = {
   // --- Voice Command Method ---
   sendVoiceCommand: async (audioUri: string): Promise<AgentResponse> => {
     try {
-      // Get Location (Same as sendChat logic)
+      console.log(`[aiAgentService] Attempting to reach: ${AGENT_API_URL}/voice-command`);
+      
       let { status } = await Location.requestForegroundPermissionsAsync();
       const location = status === 'granted'
         ? await Location.getCurrentPositionAsync({})
         : null;
       
-      // Get Auth Session (to identify the user on the backend)
       const { data: { session } } = await supabase.auth.getSession();
 
-      // Prepare FormData
       const formData = new FormData();
 
-      // Extract file extension and prepare file object
+      // Extract file info
       const uriParts = audioUri.split('.');
       const fileType = uriParts[uriParts.length - 1];
+      const fileName = `recording.${fileType}`;
+
+      // Corrected FormData append for React Native
+      const fileToUpload = {
+        uri: audioUri,
+        name: fileName,
+        type: `audio/${fileType === 'm4a' ? 'mp4' : fileType}`,
+      } as any;
 
       // @ts-ignore - FormData expects a specific blob-like structure on React Native
-      formData.append('file', {
-        uri: audioUri,
-        name: `recording.${fileType}`,
-        type: `audio/${fileType}`
-      });
+      formData.append('file', fileToUpload);
 
       // Add metadata as string fields (FastAPI will parse these)
       if (location) {
         formData.append('lat', location.coords.latitude.toString());
         formData.append('lng', location.coords.longitude.toString());
+      } else {
+        formData.append('lat', "45.4642");
+        formData.append('lng', "9.1900");
       }
+
       if (session?.user.id) {
         formData.append('user_id', session.user.id);
       }
@@ -123,8 +133,9 @@ export const aiAgentService = {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Voice processing failed');
+        const errorText = await response.text();
+        console.error("[aiAgentService] Server Raw Error:", errorText);
+        throw new Error('Voice processing failed on server');
       }
 
       return await response.json();

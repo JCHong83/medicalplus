@@ -39,6 +39,16 @@ export default function PatientTabsLayout() {
           }}
         />
         <Tabs.Screen
+          name="browse-doctors"
+          options={{
+            title: "Find Doctors",
+            tabBarLabel: "Find Doctors",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="search" color={color} size={size} />
+            ),
+          }}
+        />
+        <Tabs.Screen
           name="ai-assistant"
           options={{
             title: "AI Assistant",

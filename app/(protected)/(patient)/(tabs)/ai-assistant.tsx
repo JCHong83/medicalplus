@@ -1,54 +1,55 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, Pressable, Dimensions, Alert } from 'react-native';
+import { useRouter } from 'expo-router'; // Added for navigation
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withRepeat,
   withTiming,
   interpolateColor,
-  withSpring
+  withSpring,
+  runOnJS
 } from 'react-native-reanimated';
 import { Mic, MessageSquare } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
 
 import { useVoiceHandler } from "../../../../src/hooks/useVoiceHandler";
 import { aiAgentService } from "../../../../src/api/aiAgent";
-
 
 const { width } = Dimensions.get('window');
 
 type AssistantState = 'ready' | 'listening' | 'thinking' | 'replying';
 
 export default function AiAssistantScreen() {
+  const router = useRouter(); // Initialize router
   const [status, setStatus] = useState<AssistantState>('ready');
   const glowValue = useSharedValue(0);
   const orbScale = useSharedValue(1);
 
-  const { isRecording, startRecording, stopRecording } = useVoiceHandler();
+  const { startRecording, stopRecording } = useVoiceHandler();
 
-  // Animation Logic: Pulsing Glow
   useEffect(() => {
     glowValue.value = withRepeat(
       withTiming(1, { duration: 1500 }),
-      -1, // Infinite
-      true // Reverse
+      -1,
+      true
     );
   }, []);
 
-  // Dynamic Glow Styles based on Status
   const animatedGlow = useAnimatedStyle(() => {
     const color = interpolateColor(
       glowValue.value,
       [0, 1],
-      status === 'listening' ? ['#ef4444', '#fca5a5'] : // Red Pulse
-      status === 'thinking' ? ['#8b5cf6', 'c4b5fd'] : // Purple pulse
-      ['#0077b6', '#90e0ef'] // Blue pulse (Ready/Replying)
+      status === 'listening' ? ['#ef4444', '#fca5a5'] : 
+      status === 'thinking' ? ['#8b5cf6', '#c4b5fd'] : 
+      ['#0077b6', '#90e0ef'] 
     );
 
     return {
-      transform: [{ scale: 1 + glowValue.value * 0.2 }],
+      transform: [{ scale: status === 'listening' ? 1.2 + glowValue.value * 0.3 : 1 + glowValue.value * 0.2 }],
       shadowColor: color,
       backgroundColor: color,
-      opacity: 0.4 + glowValue.value * 0.3,
+      opacity: status === 'listening' ? 0.6 : 0.4,
     };
   });
 
@@ -56,76 +57,127 @@ export default function AiAssistantScreen() {
     transform: [{ scale: orbScale.value }]
   }));
 
-  const handlePressIn = () => {
-    orbScale.value = withSpring(0.9);
+  const handlePressIn = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    orbScale.value = withSpring(0.85);
     setStatus('listening');
-    // Start recording and trigger haptic feedback
-    startRecording();
+    try {
+      await startRecording();
+    } catch (e) {
+      console.error("Recording start failed", e);
+      setStatus('ready');
+    }
   };
 
   const handlePressOut = async () => {
     orbScale.value = withSpring(1);
+    // Move to thinking state immediately
     setStatus('thinking');
-    // Call aiAgentService
-    const uri = await stopRecording();
-    if (uri) {
-      processVoice(uri);
+
+    try {
+      const uri = await stopRecording();
+      if (uri) {
+        await processVoice(uri);
+      } else {
+        setStatus('ready');
+      }
+    } catch (e) {
+      console.error("Recording stop failed", e);
+      setStatus('ready');
     }
   };
 
   const processVoice = async (uri: string) => {
     try {
-      console.log("Sending auhdio to AI Agent...");
-      // In teh next step, we'll implement the actual fetch logic
-      // to send this file to the FastAPI server
+      console.log("Sending audio to AI Agent...");
       const response = await aiAgentService.sendVoiceCommand(uri);
-      console.log("AI Response:", response);
 
-      setStatus('replying');
+      console.log(`AGENT RECEIVED ${response.doctors?.length || 0} DOCTORS`);
+      
+      if (response?.metadata?.is_emergency) {
+        setStatus('replying');
+        Alert.alert(
+          "🚨 Emergency Warning",
+          response.response_text,
+          [{ text: "Dismiss", onPress: () => setStatus('ready') }]
+        );
+        return;
+      }
+
+      const mappedResults = (response.doctors || []).map((doc: any) => ({
+        ...doc,
+        id: doc.id || doc.place_id,
+        isRegistered: !!doc.id,
+        category: response.diagnosis?.recommended_specialty || "Specialist",
+        distance: doc.distance || "Nearby"
+      }));
+
+      if (mappedResults.length > 0) {
+        router.push({
+          pathname: "/(protected)/(patient)/results-display",
+          params: { 
+            data: JSON.stringify(mappedResults),
+            title: response.diagnosis?.recommended_specialty || "Specialists"
+          }
+        });
+      } else {
+        Alert.alert("No Results", "No doctors found in your immediate area.");
+      }
+
+      setStatus('ready');
 
     } catch (error) {
       console.error("Agent Error:", error);
-      setStatus('ready')
-    } finally {
-      setTimeout(() => setStatus('ready'), 3000);
+      setStatus('ready');
     }
   };
 
   return (
     <View style={styles.container}>
-      {/* STATUS TEXT */}
       <View style={styles.textContainer}>
         <Text style={styles.statusTitle}>
-          {status === 'ready' ? "I'm Listening" :
-          status === 'listening' ? "Go ahead..." :
-          status === 'thinking' ? "Thinking..." : "Assistant"}
+          {status === 'ready' && "I'm Listening"}
+          {status === 'listening' && "Listening..."}
+          {status === 'thinking' && "Analyzing..."}
+          {status === 'replying' && "Notice"}
         </Text>
         <Text style={styles.statusSubtitle}>
-          {status === 'ready' ? "Press and hold the orb to speak" : "Medical+ AI"}
+          {status === 'ready' ? "Hold the orb to describe symptoms" : "Medical+ AI"}
         </Text>
       </View>
 
-      {/* THE ORB & GLOW */}
       <View style={styles.centerSection}>
-        <Animated.View style={[styles.glowLayer, animatedGlow]} />
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.glowLayer, animatedGlow]}
+        />
+        {/* Use Pressable with delayLongPress set to 0 to make it reactive */}
         <Pressable
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
+          hitSlop={20}
+          delayLongPress={0}
+          style={({ pressed }) => [
+            { opacity: 1 }
+          ]}
         >
           <Animated.View style={[styles.orb, orbStyle]}>
-            <Mic size={40} color="white" strokeWidth={1.5} />
+            <Mic size={42} color="white" strokeWidth={2} />
           </Animated.View>
         </Pressable>
       </View>
 
-      {/* CHAT DRAWER TRIGGER */}
-      <Pressable style={styles.chatTrigger}>
-        <MessageSquare size={24} color="#666" />
-        <Text style={styles.chatTriggerText}>View Transcript</Text>
-      </Pressable>
+      <View style={styles.footer}>
+        <Pressable style={styles.chatTrigger}>
+          <MessageSquare size={20} color="#666" />
+          <Text style={styles.chatTriggerText}>View History</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
+
+
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 80 },
@@ -154,6 +206,7 @@ const styles = StyleSheet.create({
     borderRadius: (width * 0.45) / 2,
     zIndex: 1,
   },
+  footer: { alignItems: 'center', marginBottom: 20 },
   chatTrigger: { flexDirection: 'row', alignItems: 'center', padding: 15, backgroundColor: '#f5f5f5', borderRadius: 30 },
   chatTriggerText: { marginLeft: 10, color: '#666', fontWeight: '600' }
 });
