@@ -1,4 +1,4 @@
-import { Slot, useRouter, useSegments } from "expo-router";
+import { Slot, useRouter, useSegments, Href } from "expo-router";
 import { useEffect } from "react";
 import { View, ActivityIndicator } from "react-native";
 import { useAuth } from "../../src/context/AuthContext";
@@ -16,70 +16,66 @@ export default function ProtectedLayout() {
     syncRoleWithUser,
   } = useRole();
 
-  // CRITICAL : We stay in a loading state if
-  // 1. Auth is still initializing
-  // 2. RoleContext is internally loading
-  // 3. We have a user, but we haven't verified their DB role yet (hasSynced is false)
   const isWaitingForSync = user && !hasSynced;
   const showLoader = authLoading || roleLoading || isWaitingForSync;
+
+  // Helper to determine which "Zone" we are currently in
+  const pathSegments = segments as string[];
+  const inDoctorZone = pathSegments.some(s => s.includes("doctor"));
+  const inPatientZone = pathSegments.some(s => s.includes("patient"));
 
   useEffect(() => {
     if (authLoading) return;
 
+    // 1. Auth Guard
     if (!user) {
-      router.replace("/(auth)/login");
+      router.replace("/(auth)/login" as Href);
       return;
     }
 
+    // 2. Sync Guard
     if (!hasSynced && !roleLoading) {
-      console.log("[ProtectedLayout] User detected but not synced. Starting sync...");
       syncRoleWithUser();
       return;
     }
 
-    // Don't perform any routing logic while we are still loading/syncing
-    if (showLoader) return;
+    // 3. Role/Route Guard
+    if (hasSynced && activeRole) {
+      console.log("DEBUG SEGMENTS:", pathSegments);
 
-    // Identify the current role segment (doctor or patient)
-    const currentRoleSegment = segments.find(
-      (s) => s === "doctor" || s === "patient"
-    );
-
-    // Check if they are at the root of the protected group
-    const isAtProtectedRoot = segments.length === 1 && segments[0] === "(protected)";
-
-    // THE GUARD: Redirect if
-    // They are at the root (just logged in)
-    // OR they are in a folder that doesn't match their activeRole
-    if (isAtProtectedRoot || (currentRoleSegment && currentRoleSegment !== activeRole)) {
-      console.log(`[ProtectedLayout] Guard triggering. Sending to /${activeRole}`);
-      router.replace(`/${activeRole}`);
+      if (activeRole === "doctor" && !inDoctorZone) {
+        console.log("[ProtectedLayout] Moving to Doctor Zone");
+        // Use the absolute path to ensure the group is resolved
+        router.replace("/(protected)/(doctor)/(tabs)" as Href);
+      } 
+      else if (activeRole === "patient" && !inPatientZone) {
+        console.log("[ProtectedLayout] Moving to Patient Zone");
+        // Use the absolute path to ensure the group is resolved
+        router.replace("/(protected)/(patient)/(tabs)" as Href);
+      }
     }
+  }, [authLoading, roleLoading, hasSynced, user, activeRole, segments]);
 
-    // Let RoleContext handle the authoritative DR check to avoid race conditions.
-
-  }, [authLoading, roleLoading, hasSynced, user, activeRole, segments ])
-
-  // Global loading fallback
+  // Loading State
   if (showLoader || !activeRole) {
     return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: "#fff",
-        }}
-      >
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" }}>
         <ActivityIndicator size="large" color="#0077b6" />
       </View>
     );
   }
 
-  // Safety check to ensure we don't render content until we are in the right folder
-  const currentRoleSegment = segments.find((s) => s === "doctor" || s === "patient");
-  if (!currentRoleSegment || currentRoleSegment !== activeRole) {
-    return null;
+  // Authorization Check - Use the same Zone logic as above
+  const isAuthorized = (activeRole === "doctor" && inDoctorZone) || 
+                       (activeRole === "patient" && inPatientZone);
+
+  if (!isAuthorized) {
+    console.log(`[ProtectedLayout] Blocking render. Role: ${activeRole}, InDoc: ${inDoctorZone}, InPat: ${inPatientZone}`);
+    return (
+      <View style={{ flex: 1, justifyContent: "center", backgroundColor: "#fff" }}>
+        <ActivityIndicator size="small" color="#0077b6" />
+      </View>
+    );
   }
 
   console.log(`[ProtectedLayout] Rendering Slot for: ${activeRole}`);

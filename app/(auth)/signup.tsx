@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, Alert } from 'react-native';
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { supabase } from "../../src/api/supabaseClient";
+import { supabase } from "../../src/api/supabase";
 
 export default function SignupScreen() {
   const router = useRouter();
