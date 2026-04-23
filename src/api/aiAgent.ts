@@ -1,4 +1,5 @@
 import * as Location from 'expo-location';
+import Constants from 'expo-constants';
 import { supabase } from "./supabase";
 
 // 1. Define types to match your FastAPI Pydantic models
@@ -25,25 +26,41 @@ export interface AgentResponse {
     address: string;
     rating: number;
     distance: string;
+    isRegistered: boolean;
     location: { lat: number; lng: number };
   }>;
 }
 
-// React Native FormData requires this specific shape
-interface ReactNativeFile {
-  uri: string;
-  name: string;
-  type: string;
-}
+// Dynamic IP Logic
+const getAgentBaseUrl = () => {
+  // If we have an override in .env, use it (highest priority)
+  if (process.env.EXPO_PUBLIC_AGENT_API_URL) {
+    return process.env.EXPO_PUBLIC_AGENT_API_URL;
+  }
+
+  // Fallback to dynamic IP detection
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (!hostUri) {
+    // Fallback for production or when hostUri is missing
+    return "http://localhost:8000";
+  }
+
+  // hostUri looks like "192.168.1.150:8081", we want the IP part
+  const ip = hostUri.split(':')[0];
+  return `http://${ip}:8000`;
+};
+
+
 
 // 2. The Service Class
-const AGENT_API_URL = process.env.EXPO_PUBLIC_AGENT_API_URL || "http://192.168.1.145:8000";
+const AGENT_API_URL = getAgentBaseUrl();
 
 export const aiAgentService = {
 
   // Captures current GPS and sends the conversation to the AI Agent
   sendChat: async (messages: ChatMessage[], userId?: string): Promise<AgentResponse> => {
     try {
+      console.log(`[aiAgentService] Chat targeting: ${AGENT_API_URL}/chat`);
       const { status } = await Location.requestForegroundPermissionsAsync();
       const location = status === 'granted'
         ? await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
