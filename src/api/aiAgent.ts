@@ -10,8 +10,9 @@ export interface ChatMessage {
 
 export interface AgentResponse {
   status: string;
+  transcript?: string;
   metadata: {
-    process_id: string;
+    process_id?: string;
     is_emergency: boolean;
   };
   diagnosis: {
@@ -19,6 +20,7 @@ export interface AgentResponse {
     recommended_specialty: string;
   };
   response_text: string;
+  audio?: string;
   doctors: Array<{
     id?: string; // Supabase ID if registered
     place_id?: string; // Google Place ID if not registered
@@ -51,16 +53,15 @@ const getAgentBaseUrl = () => {
 };
 
 
+const AGENT_API_URL = getAgentBaseUrl();
 
 // 2. The Service Class
-const AGENT_API_URL = getAgentBaseUrl();
 
 export const aiAgentService = {
 
-  // Captures current GPS and sends the conversation to the AI Agent
+  // Standard Text Chat (Keep headers as JSON)
   sendChat: async (messages: ChatMessage[], userId?: string): Promise<AgentResponse> => {
     try {
-      console.log(`[aiAgentService] Chat targeting: ${AGENT_API_URL}/chat`);
       const { status } = await Location.requestForegroundPermissionsAsync();
       const location = status === 'granted'
         ? await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
@@ -90,15 +91,14 @@ export const aiAgentService = {
       return await response.json();
     } catch (error) {
       console.error("[aiAgentService] Error:", error);
-
       throw error;
     }
   },
 
   // --- Voice Command Method ---
-  sendVoiceCommand: async (audioUri: string): Promise<AgentResponse> => {
+  sendVoiceCommand: async (audioUri: string, history: ChatMessage[]): Promise<AgentResponse> => {
     try {
-      console.log(`[aiAgentService] Attempting to reach: ${AGENT_API_URL}/voice-command`);
+      console.log(`[aiAgentService] Voice Targeting: ${AGENT_API_URL}/voice-command`);
       
       let { status } = await Location.requestForegroundPermissionsAsync();
       const location = status === 'granted'
@@ -112,12 +112,10 @@ export const aiAgentService = {
       // Extract file info
       const uriParts = audioUri.split('.');
       const fileType = uriParts[uriParts.length - 1];
-      const fileName = `recording.${fileType}`;
-
       // Corrected FormData append for React Native
       const fileToUpload = {
         uri: audioUri,
-        name: fileName,
+        name: `recording.${fileType}`,
         type: `audio/${fileType === 'm4a' ? 'mp4' : fileType}`,
       } as any;
 
@@ -125,13 +123,11 @@ export const aiAgentService = {
       formData.append('file', fileToUpload);
 
       // Add metadata as string fields (FastAPI will parse these)
-      if (location) {
-        formData.append('lat', location.coords.latitude.toString());
-        formData.append('lng', location.coords.longitude.toString());
-      } else {
-        formData.append('lat', "45.4642");
-        formData.append('lng', "9.1900");
-      }
+      formData.append('lat', (location?.coords.latitude || 45.4642).toString());
+      formData.append('lng', (location?.coords.longitude || 9.1900).toString());
+      
+      // Add conversation history
+      formData.append('history', JSON.stringify(history));
 
       if (session?.user.id) {
         formData.append('user_id', session.user.id);
@@ -143,15 +139,13 @@ export const aiAgentService = {
         body: formData,
         headers: {
           'Accept': 'application/json',
-          // Note: Do NOT set Content-Type header manually when using FormData
-          // The browser/RN adds the boundary automatically.
           'Authorization': `Bearer ${session?.access_token}`,
         },
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("[aiAgentService] Server Raw Error:", errorText);
+        console.error("[aiAgentService] Server Error:", errorText);
         throw new Error('Voice processing failed on server');
       }
 
