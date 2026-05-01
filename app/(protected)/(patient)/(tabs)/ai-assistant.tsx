@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions, Alert } from 'react-native';
-import { useRouter } from 'expo-router'; // Added for navigation
+import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native'; // Added for re-entry logic
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -14,75 +15,83 @@ import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
 
 import { useVoiceHandler } from "../../../../src/hooks/useVoiceHandler";
-import { aiAgentService } from "../../../../src/api/aiAgent";
-
+import { aiAgentService, ChatMessage } from "../../../../src/api/aiAgent";
+import { supabase } from '@/api/supabase';
 
 const { width } = Dimensions.get('window');
-
 type AssistantState = 'ready' | 'listening' | 'thinking' | 'replying';
 
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
 export default function AiAssistantScreen() {
-  const router = useRouter(); // Initialize router
+  const router = useRouter();
   const [status, setStatus] = useState<AssistantState>('ready');
-  const [sound, setSound] = useState<Audio.Sound | null>(null); // Manages sound object
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
-  const [isInitialGreeted, setIsInitialGreeted] = useState(false);
+  
+  // Use a ref for sound to ensure we can always stop it immediately
+  const soundRef = useRef<Audio.Sound | null>(null);
 
   const glowValue = useSharedValue(0);
   const orbScale = useSharedValue(1);
   const { startRecording, stopRecording } = useVoiceHandler();
 
-  // Initial Greeting Effect
-  useEffect(() => {
-    const triggerGreeting = async () => {
-      if (!isInitialGreeted) {
-        // Add a 500ms buffer to ensure networking is stable
-        await new Promise(resolve => setTimeout(resolve, 500));
+  // Fix Issue #4 & #5: Re-trigger greeting and reset state on focus
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+      
+      // Reset logic
+      setChatHistory([]);
+      setStatus('ready');
 
-        setStatus('thinking');
-        try {
-          // Sending an empty history triggers the 'Greeting' logic in our updated IntakeAgent
-          const response = await aiAgentService.sendVoiceCommand("", []);
-          if (response.audio) {
-            await playBase64Audio(response.audio);
+      const triggerGreeting = async () => {
+        // Wait for screen transition to finish
+        await new Promise(resolve => setTimeout(resolve, 800));
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (isMounted && session) {
+          setStatus('thinking');
+          try {
+            // Sending empty history to main.py greeting logic
+            const response = await aiAgentService.sendVoiceCommand("", []);
+            if (response.audio && isMounted) {
+              await playBase64Audio(response.audio);
+            }
+          } catch (e) {
+            console.warn("Greeting skipped:", e);
+            setStatus('ready');
           }
-          setIsInitialGreeted(true);
-        } catch (e) {
-          console.error("Greeting failed", e);
-          setStatus('ready');
         }
-      }
-    };
-    triggerGreeting();
-  }, []);
+      };
 
-  // Cleanup sound on unmount to prevent memory leaks
-  useEffect(() => {
-    return sound ? () => { sound.unloadAsync(); } : undefined;
-  }, [sound]);
+      triggerGreeting();
+
+      return () => {
+        isMounted = false;
+        if (soundRef.current) {
+          soundRef.current.unloadAsync();
+        }
+      };
+    }, [])
+  );
 
   useEffect(() => {
     glowValue.value = withRepeat(withTiming(1, { duration: 1500 }), -1, true);
   }, []);
 
-  
-  // Function to play Base64 Audio
   const playBase64Audio = async (base64Data: string) => {
     try {
-      // If a sound is already playing, stop it
-      if (sound) await sound.unloadAsync();
+      // Stop and unload existing sound
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+      }
+
       const { sound: newSound } = await Audio.Sound.createAsync(
         { uri: `data:audio/mp3;base64,${base64Data}` },
         { shouldPlay: true }
       );
-      setSound(newSound);
-      // Update UI state while speaking
+      
+      soundRef.current = newSound;
       setStatus('replying');
+
       newSound.setOnPlaybackStatusUpdate((playbackStatus) => {
         if (playbackStatus.isLoaded && playbackStatus.didJustFinish) {
           setStatus('ready');
@@ -93,10 +102,13 @@ export default function AiAssistantScreen() {
       setStatus('ready');
     }
   };
-  
+
   const handlePressIn = async () => {
-    // Stop any current audio if the user starts talking
-    if (sound) await sound.stopAsync();
+    // Immediate audio stop
+    if (soundRef.current) {
+      await soundRef.current.stopAsync();
+    }
+    
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     orbScale.value = withSpring(0.85);
     setStatus('listening');
@@ -109,7 +121,6 @@ export default function AiAssistantScreen() {
 
   const handlePressOut = async () => {
     orbScale.value = withSpring(1);
-    // Move to thinking state immediately
     setStatus('thinking');
     try {
       const uri = await stopRecording();
@@ -127,6 +138,7 @@ export default function AiAssistantScreen() {
     try {
       const response = await aiAgentService.sendVoiceCommand(uri, chatHistory);
 
+      // Update history
       if (response.transcript || response.response_text) {
         setChatHistory(prev => [
           ...prev,
@@ -135,31 +147,28 @@ export default function AiAssistantScreen() {
         ]);
       }
 
-      // Handle AI Voice Response
+      // Handle audio playback
       if (response.audio) {
         await playBase64Audio(response.audio);
       }
       
       if (response?.metadata?.is_emergency) {
-        setStatus('replying');
-        Alert.alert(
-          "🚨 Emergency Warning",
-          response.response_text,
-        );
+        Alert.alert("🚨 Emergenza", response.response_text);
         return;
       }
 
+      // Handle results navigation
       if (response.doctors && response.doctors.length > 0) {
-        // We keep the data exactly as the backend sent it
-        const finalResults = response.doctors; 
-        
-        router.push({
-          pathname: "/(protected)/(patient)/results-display",
-          params: { 
-            data: JSON.stringify(response.doctors),
-            title: response.diagnosis?.recommended_specialty || "Specialisti"
-          }
-        });
+        // Navigation after the AI finished its "Found doctors" sentence
+        setTimeout(() => {
+          router.push({
+            pathname: "/(protected)/(patient)/results-display",
+            params: { 
+              data: JSON.stringify(response.doctors),
+              title: response.diagnosis?.recommended_specialty || "Specialisti"
+            }
+          });
+        }, 2000); 
       }
     } catch (error) {
       console.error("Agent Error:", error);
@@ -167,7 +176,6 @@ export default function AiAssistantScreen() {
     }
   };
 
-  // Animated Styles
   const animatedGlow = useAnimatedStyle(() => {
     const color = interpolateColor(
       glowValue.value,
@@ -179,10 +187,10 @@ export default function AiAssistantScreen() {
     );
 
     return {
-      transform: [{ scale: status === 'listening' ? 1.2 + glowValue.value * 0.3 : 1 + glowValue.value * 0.2 }],
+      transform: [{ scale: status === 'listening' ? 1.5 : 1.2 }],
       shadowColor: color,
       backgroundColor: color,
-      opacity: status === 'listening' ? 0.6 : 0.4,
+      opacity: status === 'listening' ? 0.7 : 0.4,
     };
   });
 
@@ -190,37 +198,28 @@ export default function AiAssistantScreen() {
     transform: [{ scale: orbScale.value }]
   }));
 
-
   return (
     <View style={styles.container}>
       <View style={styles.textContainer}>
         <Text style={styles.statusTitle}>
           {status === 'ready' && "Medical+ AI"}
           {status === 'listening' && "Ti ascolto..."}
-          {status === 'thinking' && "Analisi in corso..."}
+          {status === 'thinking' && "Analisi..."}
           {status === 'replying' && "Assistente"}
         </Text>
         <Text style={styles.statusSubtitle}>
           {status === 'ready' && "Tieni premuto il cerchio per parlare"}
-          {status === 'thinking' && "Cerco la soluzione migliore..."}
-          {status === 'replying' && "In attesa di altre informazioni"}
+          {status === 'thinking' && "Elaborazione in corso..."}
+          {status === 'replying' && "Ti rispondo..."}
         </Text>
       </View>
 
       <View style={styles.centerSection}>
-        <Animated.View
-          pointerEvents="none"
-          style={[styles.glowLayer, animatedGlow]}
-        />
-        {/* Use Pressable with delayLongPress set to 0 to make it reactive */}
+        <Animated.View pointerEvents="none" style={[styles.glowLayer, animatedGlow]} />
         <Pressable
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
-          hitSlop={20}
           delayLongPress={0}
-          style={({ pressed }) => [
-            { opacity: 1 }
-          ]}
         >
           <Animated.View style={[styles.orb, orbStyle]}>
             <Mic size={42} color="white" strokeWidth={2} />
@@ -237,8 +236,6 @@ export default function AiAssistantScreen() {
     </View>
   );
 }
-
-
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 80 },

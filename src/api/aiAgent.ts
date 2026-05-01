@@ -109,20 +109,29 @@ export const aiAgentService = {
 
       const formData = new FormData();
 
-      // Extract file info
-      const uriParts = audioUri.split('.');
-      const fileType = uriParts[uriParts.length - 1];
-      // Corrected FormData append for React Native
-      const fileToUpload = {
-        uri: audioUri,
-        name: `recording.${fileType}`,
-        type: `audio/${fileType === 'm4a' ? 'mp4' : fileType}`,
-      } as any;
+      // --- FIX: SAFE FILE ATTACHMENT ---
+      if (audioUri && audioUri.length > 0) {
+        // Normal path: we have a recording
+        const uriParts = audioUri.split('.');
+        const fileType = uriParts[uriParts.length - 1];
+        
+        // @ts-ignore
+        formData.append('file', {
+          uri: audioUri,
+          name: `recording.${fileType}`,
+          type: `audio/${fileType === 'm4a' ? 'mp4' : fileType}`,
+        });
+      } else {
+        // Greeting path: send a dummy text file to keep the bridge happy
+        // @ts-ignore
+        formData.append('file', {
+          uri: 'file:///dev/null', // A fake but valid-formatted URI for the native layer
+          name: 'greeting.txt',
+          type: 'text/plain',
+        });
+      }
 
-      // @ts-ignore - FormData expects a specific blob-like structure on React Native
-      formData.append('file', fileToUpload);
-
-      // Add metadata as string fields (FastAPI will parse these)
+      // Metadata (Lat/Lng must be strings for FormData)
       formData.append('lat', (location?.coords.latitude || 45.4642).toString());
       formData.append('lng', (location?.coords.longitude || 9.1900).toString());
       
@@ -133,7 +142,6 @@ export const aiAgentService = {
         formData.append('user_id', session.user.id);
       }
 
-      // Call FastAPI Voice Endpoint
       const response = await fetch(`${AGENT_API_URL}/voice-command`, {
         method: 'POST',
         body: formData,
@@ -151,6 +159,7 @@ export const aiAgentService = {
 
       return await response.json();
     } catch (error) {
+      // If greeting fails, this catch block is triggered
       console.error("[aiAgentService] Voice Error:", error);
       throw error;
     }
