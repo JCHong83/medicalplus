@@ -77,7 +77,7 @@ export default function AiAssistantScreen() {
     glowValue.value = withRepeat(withTiming(1, { duration: 1500 }), -1, true);
   }, []);
 
-  const playBase64Audio = async (base64Data: string) => {
+  const playBase64Audio = async (base64Data: string, onComplete?: () => void) => {
     try {
       // Stop and unload existing sound
       if (soundRef.current) {
@@ -95,11 +95,13 @@ export default function AiAssistantScreen() {
       newSound.setOnPlaybackStatusUpdate((playbackStatus) => {
         if (playbackStatus.isLoaded && playbackStatus.didJustFinish) {
           setStatus('ready');
+          if (onComplete) onComplete();
         }
       });
     } catch (error) {
       console.error("Playback error:", error);
       setStatus('ready');
+      if (onComplete) onComplete();
     }
   };
 
@@ -147,20 +149,16 @@ export default function AiAssistantScreen() {
         ]);
       }
 
-      // Handle audio playback
-      if (response.audio) {
-        await playBase64Audio(response.audio);
-      }
-      
+      // Check for Emergency Immediately
       if (response?.metadata?.is_emergency) {
+        if (response.audio) await playBase64Audio(response.audio);
         Alert.alert("🚨 Emergenza", response.response_text);
         return;
       }
 
-      // Handle results navigation
-      if (response.doctors && response.doctors.length > 0) {
-        // Navigation after the AI finished its "Found doctors" sentence
-        setTimeout(() => {
+      // Define the Navigation Logic
+      const handleNavigation = () => {
+        if (response.doctors && response.doctors.length > 0) {
           router.push({
             pathname: "/(protected)/(patient)/results-display",
             params: { 
@@ -168,8 +166,19 @@ export default function AiAssistantScreen() {
               title: response.diagnosis?.recommended_specialty || "Specialisti"
             }
           });
-        }, 2000); 
+        }
+      };
+
+      // Play Audio and Pass the Navigation as the "Finish" callback
+      if (response.audio) {
+        // If we have doctors, pass handleNAvigation. If Not, pass nothing.
+        const onFinish = (response.doctors?.length > 0) ? handleNavigation : undefined;
+        await playBase64Audio(response.audio, onFinish);
+      } else {
+        // Fallback: If there's no audio at all, navigate immediately
+        handleNavigation();
       }
+
     } catch (error) {
       console.error("Agent Error:", error);
       setStatus('ready');
