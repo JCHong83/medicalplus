@@ -152,7 +152,7 @@ export default function AiAssistantScreen() {
       // Check for Emergency Immediately
       if (response?.metadata?.is_emergency) {
         if (response.audio) await playBase64Audio(response.audio);
-        Alert.alert("🚨 Emergenza", response.response_text);
+        Alert.alert("🚨 Emergency", response.response_text);
         return;
       }
 
@@ -162,7 +162,7 @@ export default function AiAssistantScreen() {
           router.push({
             pathname: "/(protected)/(patient)/results-display",
             params: { 
-              data: JSON.stringify(response.doctors),
+              data: JSON.stringify(response),
               title: response.diagnosis?.recommended_specialty || "Specialisti"
             }
           });
@@ -212,14 +212,14 @@ export default function AiAssistantScreen() {
       <View style={styles.textContainer}>
         <Text style={styles.statusTitle}>
           {status === 'ready' && "Medical+ AI"}
-          {status === 'listening' && "Ti ascolto..."}
-          {status === 'thinking' && "Analisi..."}
-          {status === 'replying' && "Assistente"}
+          {status === 'listening' && "I'm listening..."}
+          {status === 'thinking' && "Analizing..."}
+          {status === 'replying' && "Replying"}
         </Text>
         <Text style={styles.statusSubtitle}>
-          {status === 'ready' && "Tieni premuto il cerchio per parlare"}
-          {status === 'thinking' && "Elaborazione in corso..."}
-          {status === 'replying' && "Ti rispondo..."}
+          {status === 'ready' && "Press the button to talk"}
+          {status === 'thinking' && "Processing..."}
+          {status === 'replying' && "Answering..."}
         </Text>
       </View>
 
@@ -239,7 +239,7 @@ export default function AiAssistantScreen() {
       <View style={styles.footer}>
         <Pressable style={styles.chatTrigger}>
           <MessageSquare size={20} color="#666" />
-          <Text style={styles.chatTriggerText}>Cronologia</Text>
+          <Text style={styles.chatTriggerText}>Chat History</Text>
         </Pressable>
       </View>
     </View>

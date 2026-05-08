@@ -41,6 +41,40 @@ export default function ResultsDisplayScreen() {
     }
   }, [data]);
 
+  // AI summary for symptoms
+  const renderAISummary = () => {
+    try {
+      if (!data) return null;
+      const parsed = JSON.parse(data);
+      
+      // If there is no diagnosis object at all, it's a manual search, so show nothing.
+      if (!parsed.diagnosis) return null;
+
+      // Extract symptoms safely
+      const symptoms = parsed.diagnosis.detected_symptoms || [];
+      const specialty = parsed.diagnosis.recommended_specialty || title;
+
+      return (
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryIconContainer}>
+            <MaterialCommunityIcons name="robot-confused-outline" size={24} color="#fff" />
+          </View>
+          <View style={styles.summaryContent}>
+            <Text style={styles.summaryTitle}>AI Analysis</Text>
+            <Text style={styles.summaryText}>
+              {symptoms.length > 0 
+                ? `Based on your symptoms (${symptoms.join(', ')}), I recommend a ${specialty}.`
+                : `I've found the best ${specialty} specialists near you.`}
+            </Text>
+          </View>
+        </View>
+      );
+    } catch (e) {
+      console.log("Summary Render Error:", e);
+      return null;
+    }
+  };
+
   const openInMaps = (address: string) => {
     const destination = encodeURIComponent(address);
     const url = Platform.select({
@@ -102,7 +136,7 @@ export default function ResultsDisplayScreen() {
           style={styles.secondaryButton} 
           onPress={() => openInMaps(item.address)}
         >
-          <Text style={styles.secondaryButtonText}>Mappa</Text>
+          <Text style={styles.secondaryButtonText}>Map</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -121,7 +155,7 @@ export default function ResultsDisplayScreen() {
           }}
         >
           <Text style={[styles.primaryButtonText, !item.isRegistered && styles.externalButtonText]}>
-            {item.isRegistered ? "Prenota Ora" : "Vedi Info"}
+            {item.isRegistered ? "Book Now" : "Check Info"}
           </Text>
         </TouchableOpacity>
       </View>
@@ -134,50 +168,26 @@ export default function ResultsDisplayScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="chevron-back" size={28} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerSubtitle}> Risultati per</Text>
-        <Text style={styles.headerTitle}>{title || "Specialisti"}</Text>
+        <Text style={styles.headerSubtitle}> Results for   </Text>
+        <Text style={styles.headerTitle}>{title || "Specialists"}</Text>
       </LinearGradient>
-
-      {/* AI Summary Header */}
-      {(() => {
-        try {
-          const parsed = JSON.parse(data);
-          if (!parsed.diagnosis) return null;
-
-          return (
-            <View style={styles.summaryCard}>
-              <View style={styles.summaryIconContainer}>
-                <MaterialCommunityIcons name="robot-confused-outline" size={24} color="#fff" />
-              </View>
-              <View style={styles.summaryContent}>
-                <Text style={styles.summaryTitle}>Analisi dei Sintomi</Text>
-                <Text style={styles.summaryText}>
-                  Rilevato: {parsed.diagnosis.detected_symptoms.join(', ') || 'Consultazione Generale'}
-                </Text>
-              </View>
-            </View>
-          );
-        } catch (e) {
-          return null;
-        }
-      })()}
 
       <FlatList
         data={results}
         renderItem={renderDoctorCard}
         keyExtractor={(item, index) => item.id || item.place_id || index.toString()}
         contentContainerStyle={styles.listContent}
+        extraData={data} // <--- IMPORTANT: Forces re-render of the header
         showsVerticalScrollIndicator={false}
-        initialNumToRender={10}
-        maxToRenderPerBatch={10}
-        windowSize={5}
+        ListHeaderComponent={renderAISummary}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <MaterialCommunityIcons name="map-marker-question" size={80} color="#dee2e6" />
-            <Text style={styles.emptyText}>Nessun mdico trovato in questa zona.</Text>
+            <Text style={styles.emptyText}>No doctors found in this area.</Text>
           </View>
         }
       />
+
     </View>
   );
 }
@@ -220,7 +230,6 @@ const styles = StyleSheet.create({
   summaryCard: {
     backgroundColor: '#eef6fb', // Very light medical blue
     margin: 16,
-    marginBottom: 8,
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,

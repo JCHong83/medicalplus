@@ -15,9 +15,15 @@ export default function BrowseDoctorsScreen() {
   const radiusOptions = [2, 5, 10, 20];
 
   const handleSearch = async (useCurrentLocation = false) => {
+    if (!query.trim() && !useCurrentLocation) {
+      Alert.alert("Input Required", "Please enter a specialty or doctor name.");
+      return;
+    }
+
     setIsSearching(true);
     try {
-      let lat, lng;
+      let lat = 45.4642;
+      let lng = 9.1900;
 
       if (useCurrentLocation) {
         let { status } = await Location.requestForegroundPermissionsAsync();
@@ -29,29 +35,30 @@ export default function BrowseDoctorsScreen() {
         const loc = await Location.getCurrentPositionAsync({});
         lat = loc.coords.latitude;
         lng = loc.coords.longitude;
-      } else {
-        // Default coordinates (e.g., Milan) if no specific address logic is yet implemented
-        // In a real app, you'd geocode the 'locationInput' string here
-        lat = 45.4642; 
-        lng = 9.1900;
       }
 
-      // We reuse the aiAgentService's sendChat logic or a dedicated manual search call
-      // For now, we simulate the backend call that returns CombinedDoctor[]
-      const response = await aiAgentService.sendChat([
-        { role: "user", content: `Find me a ${query} in ${locationInput || 'my area'}` }
-      ]);
-
-      router.push({
-        pathname: "/(protected)/(patient)/results-display",
-        params: { 
-          data: JSON.stringify(response.doctors), 
-          title: query || "Medical Facilities" 
-        }
+      // New Specialized endpoint for manual search
+      const response = await aiAgentService.manualSearch({
+        specialty: query,
+        location: locationInput,
+        lat,
+        lng,
+        radius
       });
 
+      if (response.status === "success") {
+        router.push({
+          pathname: "/(protected)/(patient)/results-display",
+          params: {
+            data: JSON.stringify(response.doctors),
+            title: query || "Specialisti"
+          }
+        });
+      }
+
     } catch (error) {
-      Alert.alert("Search Failed", "Could not fetch results. Please try again.");
+      console.error(error)
+      Alert.alert("Search Error", "We couldn't find any results. Try a different specialty.");
     } finally {
       setIsSearching(false);
     }

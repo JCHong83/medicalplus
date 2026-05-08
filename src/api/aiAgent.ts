@@ -163,5 +163,40 @@ export const aiAgentService = {
       console.error("[aiAgentService] Voice Error:", error);
       throw error;
     }
+  },
+
+  // --- Manual Search Method ---
+  manualSearch: async (params: { 
+    specialty: string; 
+    location?: string; 
+    lat: number; 
+    lng: number; 
+    radius: number 
+  }): Promise<AgentResponse> => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      // We use JSON here because manual search doesn't require multipart/form-data (no audio file)
+      const response = await fetch(`${AGENT_API_URL}/manual-search`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify(params),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Manual search failed');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("[aiAgentService] Manual Search Error:", error);
+      throw error;
+    }
   }
+  
 };
