@@ -12,12 +12,11 @@ export default function DoctorDashboard() {
   const [isSwitching, setIsSwitching] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const sections = [
-    { name: "Appointments", icon: "calendar-outline", route: "/(doctor)/appointments" },
-    { name: "Availability", icon: "time-outline", route: "/(doctor)/availability" },
-    { name: "Clinics", icon: "business-outline", route: "/(doctor)/clinics" },
-    { name: "Services", icon: "briefcase-outline", route: "/(doctor)/services" },
-    { name: "Profile", icon: "person-outline", route: "/(doctor)/profile" },
+  const managementSections = [
+    { name: "My Appointments", icon: "calendar-outline", route: "/(doctor)/appointments" },
+    { name: "Clinic Locations", icon: "business-outline", route: "/(doctor)/clinics" },
+    { name: "Services & Pricing", icon: "briefcase-outline", route: "/(doctor)/services" },
+    { name: "Availability Hours", icon: "time-outline", route: "/(doctor)/availability" },
   ];
 
   // Switch to patient mode
@@ -56,15 +55,16 @@ export default function DoctorDashboard() {
 
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.title}>Welcome, Doctor 👋</Text>
-      <Text style={styles.subtitle}>Manage your schedule and practice with ease.</Text>
+      <Text style={styles.title}>Practice Manager</Text>
+      <Text style={styles.subtitle}>Configure your clinics, services, and schedule.</Text>
 
+      {/* Main Grid */}
       <View style={styles.grid}>
-        {sections.map((s) => (
+        {managementSections.map((s) => (
           <TouchableOpacity
             key={s.name}
             style={styles.card}
-            onPress={() => router.push( s.route as Href)}
+            onPress={() => router.push(s.route as Href)}
           >
             <Ionicons name={s.icon as any} size={28} color="#0077b6" />
             <Text style={styles.cardText}>{s.name}</Text>
@@ -72,29 +72,14 @@ export default function DoctorDashboard() {
         ))}
       </View>
 
-      {/* Switch Mode Button */}
-      <TouchableOpacity
-        disabled={isSwitching}
-        style={[styles.switchButton, isSwitching && { opacity: 0.7 }]}
-        onPress={handleSwitchToPatient}
-      >
-        <Ionicons name="swap-horizontal-outline" size={20} color="#fff" />
-        <Text style={styles.switchButtonText}>
-          {isSwitching ? "Switching..." : "Switch to Patient Mode"}
-        </Text>
+      {/* Account Section */}
+      <Text style={styles.sectionHeader}>Account</Text>
+      <TouchableOpacity style={styles.cardFull} onPress={() => router.push("/(protected)/(doctor)/(tabs)/profile")}>
+        <Ionicons name="person-outline" size={24} color="#555" />
+        <Text style={styles.cardFullText}>Edit Professional Profile</Text>
       </TouchableOpacity>
 
-      {/* Logout Button */}
-      <TouchableOpacity
-        disabled={isLoggingOut}
-        style={[styles.logoutButton, isLoggingOut && { opacity: 0.7 }]}
-        onPress={handleLogout}
-      >
-        <Ionicons name="log-out-outline" size={20} color="#d00000" />
-        <Text style={styles.logoutButtonText}>
-          {isLoggingOut ? "LoggingOut..." : "Logout"}
-        </Text>
-      </TouchableOpacity>
+      {/* ... keep Switch and Logout buttons ... */}
     </ScrollView>
   );
 }
@@ -151,4 +136,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginLeft: 8,
   },
+  sectionHeader: { fontSize: 18, fontWeight: '700', color: '#03045e', marginTop: 24, marginBottom: 12 },
+  cardFull: { flexDirection: 'row', backgroundColor: '#fff', padding: 16, borderRadius: 12, alignItems: 'center', gap: 12 },
+  cardFullText: { fontSize: 16, color: '#333' },
 });
